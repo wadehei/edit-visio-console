@@ -33,4 +33,10 @@ public interface ProjectService extends BaseService<Project> {
 
     /** 永久删除 */
     void permanentDeleteProject(Long projectId);
+
+    /** 导出项目配置为 JSON */
+    Map<String, Object> exportProject(Long projectId);
+
+    /** 从 JSON 导入项目 */
+    ProjectVO importProject(Map<String, Object> projectData);
 }

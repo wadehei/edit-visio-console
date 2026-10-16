@@ -99,4 +99,17 @@ public class ProjectController {
         projectService.permanentDeleteProject(projectId);
         return R.ok();
     }
+
+    @Operation(summary = "导出项目配置")
+    @GetMapping("/{projectId}/export")
+    public R<Map<String, Object>> exportProject(@PathVariable Long projectId) {
+        return R.ok(projectService.exportProject(projectId));
+    }
+
+    @OpLog(module = "项目管理", action = "导入项目")
+    @Operation(summary = "导入项目配置")
+    @PostMapping("/import")
+    public R<ProjectVO> importProject(@RequestBody Map<String, Object> projectData) {
+        return R.ok(projectService.importProject(projectData));
+    }
 }

@@ -269,6 +269,57 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         log.info("永久删除项目: projectId=" + projectId);
     }
 
+    @Override
+    public Map<String, Object> exportProject(Long projectId) {
+        Project project = getById(projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
+        }
+
+        Map<String, Object> exportData = new java.util.LinkedHashMap<>();
+        exportData.put("name", project.getName());
+        exportData.put("description", project.getDescription());
+        exportData.put("coverUrl", project.getCoverUrl());
+        exportData.put("status", project.getStatus());
+        exportData.put("settings", project.getSettings());
+        exportData.put("exportTime", java.time.LocalDateTime.now().toString());
+        exportData.put("version", "1.0");
+
+        return exportData;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ProjectVO importProject(Map<String, Object> projectData) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        String name = (String) projectData.getOrDefault("name", "导入项目");
+        String description = (String) projectData.get("description");
+        String coverUrl = (String) projectData.get("coverUrl");
+        Integer status = projectData.get("status") != null ?
+                ((Number) projectData.get("status")).intValue() : StatusConst.Project.DRAFT;
+        Object settings = projectData.get("settings");
+
+        Project project = new Project();
+        project.setName(name + " (导入)");
+        project.setDescription(description);
+        project.setCoverUrl(coverUrl);
+        project.setUserId(userId);
+        project.setStatus(status);
+        if (settings instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> settingsMap = (Map<String, Object>) settings;
+            project.setSettings(settingsMap);
+        }
+        save(project);
+
+        log.info("导入项目: projectId={}, name={}", project.getId(), project.getName());
+        return toVO(project);
+    }
+
     private ProjectVO toVO(Project project) {
         return ProjectVO.builder()
                 .projectId(project.getId())

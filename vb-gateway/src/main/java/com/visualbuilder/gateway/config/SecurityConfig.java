@@ -35,7 +35,9 @@ public class SecurityConfig {
             "/v3/api-docs/**",
             "/webjars/**",
             "/favicon.ico",
-            "/error"
+            "/error",
+            "/internal/actuator/health",
+            "/internal/actuator/info"
     };
 
     @Bean
