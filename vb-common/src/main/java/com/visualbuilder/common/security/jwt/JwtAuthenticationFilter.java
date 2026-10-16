@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -31,6 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String AUTH_HEADER = "Authorization";
     private static final String TOKEN_PREFIX = "Bearer ";
 
+    @SuppressWarnings("unchecked")
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
@@ -48,14 +50,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Long userId = Long.parseLong(claims.getSubject());
             String username = claims.get("username", String.class);
 
-            // 将用户信息存入 SecurityContext
-            List<SimpleGrantedAuthority> authorities = Collections.emptyList();
+            // 从 JWT claims 提取角色和权限
+            List<String> roles = Collections.emptyList();
+            List<String> permissions = Collections.emptyList();
+            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+
+            Object rolesObj = claims.get("roles");
+            if (rolesObj instanceof List<?> rawList) {
+                roles = rawList.stream().map(Object::toString).toList();
+                roles.forEach(r -> authorities.add(new SimpleGrantedAuthority("ROLE_" + r)));
+            }
+
+            Object permsObj = claims.get("permissions");
+            if (permsObj instanceof List<?> rawList) {
+                permissions = rawList.stream().map(Object::toString).toList();
+                permissions.forEach(p -> authorities.add(new SimpleGrantedAuthority(p)));
+            }
+
+            // 将用户信息存入 SecurityContext（含角色/权限 authorities）
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(userId, null, authorities);
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
             // 存入 ThreadLocal 方便业务层获取
-            SecurityUtils.setContext(userId, username);
+            SecurityUtils.setContext(userId, username, roles, permissions);
         }
 
         try {

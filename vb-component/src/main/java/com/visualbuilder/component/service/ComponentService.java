@@ -8,4 +8,7 @@ import java.util.List;
 public interface ComponentService extends BaseService<Component> {
     List<ComponentVO> listComponents(Long categoryId, String keyword);
     ComponentVO getComponentDetail(Long componentId);
+    void createComponent(Component component);
+    void updateComponent(Long componentId, Component component);
+    void deleteComponent(Long componentId);
 }

@@ -3,7 +3,9 @@ package com.visualbuilder.project.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
+import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.project.dto.ProjectCreateDTO;
@@ -12,12 +14,17 @@ import com.visualbuilder.project.entity.Project;
 import com.visualbuilder.project.mapper.ProjectMapper;
 import com.visualbuilder.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
@@ -28,7 +35,7 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
     public ProjectVO createProject(ProjectCreateDTO dto) {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BusinessException(40001, "用户未登录");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
 
         Project project = new Project();
@@ -36,7 +43,7 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         project.setDescription(dto.getDescription());
         project.setCoverUrl(dto.getCoverImage());
         project.setUserId(userId);
-        project.setStatus(0);
+        project.setStatus(StatusConst.Project.DRAFT);
         project.setSettings(dto.getSettings());
         save(project);
 
@@ -47,7 +54,7 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
     public ProjectVO getProjectDetail(Long projectId) {
         Project project = getById(projectId);
         if (project == null) {
-            throw new BusinessException(40005, "项目不存在");
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
         return toVO(project);
     }
@@ -82,8 +89,9 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
     public ProjectVO updateProject(Long projectId, ProjectCreateDTO dto) {
         Project project = getById(projectId);
         if (project == null) {
-            throw new BusinessException(40005, "项目不存在");
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
+        checkProjectOwner(project);
 
         if (StringUtils.hasText(dto.getName())) {
             project.setName(dto.getName());
@@ -107,9 +115,57 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
     public void deleteProject(Long projectId) {
         Project project = getById(projectId);
         if (project == null) {
-            throw new BusinessException(40005, "项目不存在");
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
+        checkProjectOwner(project);
         removeById(projectId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> batchDeleteProjects(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "ID 列表不能为空");
+        }
+        if (ids.size() > 50) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "单次批量删除不能超过50条");
+        }
+
+        Long userId = SecurityUtils.getCurrentUserId();
+
+        // 批量查询，避免 N+1
+        List<Project> projects = listByIds(ids);
+        Map<Long, Project> projectMap = new java.util.LinkedHashMap<>();
+        for (Project p : projects) {
+            projectMap.put(p.getId(), p);
+        }
+
+        int success = 0;
+        int skipped = 0;
+        List<Long> toDeleteIds = new java.util.ArrayList<>();
+        for (Long id : ids) {
+            Project project = projectMap.get(id);
+            if (project == null) {
+                skipped++;
+                continue;
+            }
+            if (userId != null && !project.getUserId().equals(userId)) {
+                skipped++;
+                continue;
+            }
+            toDeleteIds.add(id);
+            success++;
+        }
+
+        if (!toDeleteIds.isEmpty()) {
+            removeByIds(toDeleteIds);
+        }
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("total", ids.size());
+        result.put("success", success);
+        result.put("skipped", skipped);
+        return result;
     }
 
     @Override
@@ -117,12 +173,12 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
     public ProjectVO copyProject(Long projectId) {
         Project source = getById(projectId);
         if (source == null) {
-            throw new BusinessException(40005, "源项目不存在");
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "源项目不存在");
         }
 
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BusinessException(40001, "用户未登录");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
 
         Project copy = new Project();
@@ -130,11 +186,87 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         copy.setDescription(source.getDescription());
         copy.setCoverUrl(source.getCoverUrl());
         copy.setUserId(userId);
-        copy.setStatus(0);
+        copy.setStatus(StatusConst.Project.DRAFT);
         copy.setSettings(source.getSettings());
         save(copy);
 
         return toVO(copy);
+    }
+
+    /**
+     * 校验当前用户是否为项目所有者
+     */
+    private void checkProjectOwner(Project project) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        if (!project.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此项目");
+        }
+    }
+
+    @Override
+    public PageResult<ProjectVO> listTrash(int page, int pageSize) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        // 使用自定义 mapper 方法绕过逻辑删除过滤
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Project> pageParam =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
+        var result = baseMapper.selectTrashPage(pageParam, userId);
+
+        var voList = result.getRecords().stream().map(this::toVO).toList();
+        return PageResult.of(voList, result.getTotal(), page, pageSize);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void restoreProject(Long projectId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        // 直接用 mapper 的自定义方法恢复（绕过逻辑删除过滤）
+        Project project = baseMapper.selectByIdIncludeDeleted(projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
+        }
+        if (!project.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此项目");
+        }
+
+        int rows = baseMapper.restoreById(projectId);
+        if (rows == 0) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在或未被删除");
+        }
+        log.info("恢复项目: projectId=" + projectId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void permanentDeleteProject(Long projectId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        Project project = baseMapper.selectByIdIncludeDeleted(projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
+        }
+        if (!project.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此项目");
+        }
+
+        int rows = baseMapper.permanentDeleteById(projectId);
+        if (rows == 0) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
+        }
+        log.info("永久删除项目: projectId=" + projectId);
     }
 
     private ProjectVO toVO(Project project) {

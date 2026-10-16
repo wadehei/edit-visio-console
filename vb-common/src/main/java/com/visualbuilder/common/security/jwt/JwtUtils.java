@@ -2,6 +2,7 @@ package com.visualbuilder.common.security.jwt;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -15,7 +16,7 @@ import java.util.Map;
 @Component
 public class JwtUtils {
 
-    @Value("${jwt.secret:visual-builder-default-secret-key-must-be-at-least-256-bits-long-for-hs256}")
+    @Value("${jwt.secret}")
     private String secret;
 
     @Value("${jwt.access-token-expire:1800}")
@@ -23,6 +24,17 @@ public class JwtUtils {
 
     @Value("${jwt.refresh-token-expire:604800}")
     private long refreshTokenExpire;
+
+    @PostConstruct
+    public void validateSecret() {
+        if (secret == null || secret.isBlank() || secret.length() < 32) {
+            throw new IllegalStateException(
+                    "JWT secret 未配置或长度不足！请设置环境变量 JWT_SECRET（至少 32 字符）");
+        }
+        if (secret.contains("dev-secret") || secret.contains("default-secret")) {
+            log.warn("⚠️  警告: JWT Secret 使用了开发默认值，生产环境务必通过环境变量 JWT_SECRET 覆盖！");
+        }
+    }
 
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
@@ -60,6 +72,9 @@ public class JwtUtils {
     }
 
     public boolean validateToken(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
         try {
             parseToken(token);
             return true;
@@ -67,6 +82,8 @@ public class JwtUtils {
             log.warn("Token已过期");
         } catch (JwtException e) {
             log.warn("Token无效: {}", e.getMessage());
+        } catch (IllegalArgumentException e) {
+            log.warn("Token格式错误: {}", e.getMessage());
         }
         return false;
     }
@@ -86,5 +103,9 @@ public class JwtUtils {
     public long getRemainingTtl(String token) {
         Date expiration = parseToken(token).getExpiration();
         return Math.max(0, expiration.getTime() - System.currentTimeMillis());
+    }
+
+    public long getAccessTokenExpire() {
+        return accessTokenExpire;
     }
 }

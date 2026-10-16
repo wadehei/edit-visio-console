@@ -1,6 +1,10 @@
 package com.visualbuilder.system.controller;
 
+import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
+import com.visualbuilder.common.security.annotation.OpLog;
+import com.visualbuilder.common.security.annotation.RequiresRole;
+import com.visualbuilder.system.dto.HealthCheckVO;
 import com.visualbuilder.system.entity.LoginLog;
 import com.visualbuilder.system.entity.SysConfig;
 import com.visualbuilder.system.entity.SysLog;
@@ -11,7 +15,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Tag(name = "系统管理")
 @RestController
@@ -28,6 +31,8 @@ public class SystemController {
     }
 
     @Operation(summary = "更新系统配置")
+    @RequiresRole("SUPER_ADMIN")
+    @OpLog(module = "系统管理", action = "更新系统配置")
     @PutMapping("/configs/{configKey}")
     public R<Void> updateConfig(
             @PathVariable String configKey,
@@ -36,27 +41,27 @@ public class SystemController {
         return R.ok();
     }
 
-    @Operation(summary = "操作日志")
+    @Operation(summary = "操作日志（分页）")
     @GetMapping("/logs")
-    public R<List<SysLog>> logs(
+    public R<PageResult<SysLog>> logs(
             @RequestParam(required = false) String module,
-            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        return R.ok(systemService.getLogs(module, pageNum, pageSize));
+        return R.ok(systemService.getLogs(module, page, pageSize));
     }
 
-    @Operation(summary = "登录日志")
+    @Operation(summary = "登录日志（分页）")
     @GetMapping("/login-logs")
-    public R<List<LoginLog>> loginLogs(
+    public R<PageResult<LoginLog>> loginLogs(
             @RequestParam(required = false) String username,
-            @RequestParam(required = false, defaultValue = "1") Integer pageNum,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        return R.ok(systemService.getLoginLogs(username, pageNum, pageSize));
+        return R.ok(systemService.getLoginLogs(username, page, pageSize));
     }
 
     @Operation(summary = "健康检查")
     @GetMapping("/health")
-    public R<Map<String, Object>> health() {
+    public R<HealthCheckVO> health() {
         return R.ok(systemService.healthCheck());
     }
 }

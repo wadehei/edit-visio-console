@@ -25,7 +25,7 @@ public class UserController {
 
     @Operation(summary = "更新个人信息")
     @PutMapping("/me")
-    public R<Void> updateProfile(@RequestBody UserUpdateDTO dto) {
+    public R<Void> updateProfile(@RequestBody @Valid UserUpdateDTO dto) {
         userService.updateProfile(dto);
         return R.ok();
     }

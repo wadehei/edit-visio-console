@@ -1,16 +1,25 @@
 package com.visualbuilder.system.entity;
 
-import com.visualbuilder.common.core.base.BaseEntity;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
+import java.io.Serializable;
+import java.time.LocalDateTime;
+
+/**
+ * 系统配置实体 — 不继承 BaseEntity（SQL 无 created_by/created_time/deleted）。
+ */
 @Data
-@EqualsAndHashCode(callSuper = true)
 @TableName("sys_config")
-public class SysConfig extends BaseEntity {
+public class SysConfig implements Serializable {
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
     private String configKey;
     private String configValue;
     private String description;
     private Long updatedBy;
+    private LocalDateTime updatedTime;
 }

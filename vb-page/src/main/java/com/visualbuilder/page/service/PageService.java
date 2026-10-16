@@ -9,6 +9,7 @@ import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.entity.PageVersion;
 
 import java.util.List;
+import java.util.Map;
 
 public interface PageService extends BaseService<Page> {
 
@@ -27,4 +28,12 @@ public interface PageService extends BaseService<Page> {
     List<PageVersion> getVersionList(Long pageId);
 
     PageVO rollbackVersion(Long pageId, Long versionId);
+
+    Map<String, Object> batchDeletePages(List<Long> ids);
+
+    PageResult<PageVO> listTrash(Long projectId, int page, int pageSize);
+
+    void restorePage(Long pageId);
+
+    void permanentDeletePage(Long pageId);
 }

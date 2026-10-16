@@ -1,6 +1,7 @@
 package com.visualbuilder.user.controller;
 
 import com.visualbuilder.common.core.result.R;
+import com.visualbuilder.common.security.annotation.RateLimit;
 import com.visualbuilder.user.dto.*;
 import com.visualbuilder.user.service.SysUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,8 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
-
 @Tag(name = "认证管理", description = "登录/注册/登出/刷新Token")
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -21,6 +20,7 @@ public class AuthController {
 
     private final SysUserService userService;
 
+    @RateLimit(key = "register", maxRequests = 3, windowSeconds = 300, message = "注册过于频繁，请 5 分钟后重试")
     @Operation(summary = "用户注册")
     @PostMapping("/register")
     public R<LoginVO> register(@RequestBody @Valid RegisterDTO dto) {
@@ -32,6 +32,7 @@ public class AuthController {
         return R.ok(userService.login(loginDTO));
     }
 
+    @RateLimit(key = "login", maxRequests = 10, windowSeconds = 60, message = "登录尝试过于频繁，请稍后再试")
     @Operation(summary = "用户登录")
     @PostMapping("/login")
     public R<LoginVO> login(@RequestBody @Valid LoginDTO dto) {
@@ -46,11 +47,11 @@ public class AuthController {
         return R.ok();
     }
 
+    @RateLimit(key = "refresh", maxRequests = 20, windowSeconds = 60)
     @Operation(summary = "刷新Token")
     @PostMapping("/refresh")
-    public R<LoginVO> refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.get("refreshToken");
-        return R.ok(userService.refreshToken(refreshToken));
+    public R<LoginVO> refresh(@RequestBody @Valid RefreshTokenDTO dto) {
+        return R.ok(userService.refreshToken(dto.getRefreshToken()));
     }
 
     @Operation(summary = "获取当前用户信息")

@@ -35,9 +35,9 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
-# JWT
+# JWT（生产环境必须通过环境变量注入）
 jwt:
-  secret: visual-builder-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+  secret: ${JWT_SECRET:visual-builder-dev-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm}
   access-token-expire: 1800
   refresh-token-expire: 604800
 
@@ -48,10 +48,10 @@ storage:
     base-path: ./uploads
     base-url: http://localhost:8080/uploads
   minio:
-    endpoint: http://localhost:9000
-    access-key: minioadmin
-    secret-key: minioadmin
-    bucket: visual-builder
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:visual-builder}
 
 # 业务配置
 business:
@@ -75,6 +75,17 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /internal/actuator
+  endpoint:
+    health:
+      show-details: when-authorized
 
 # Logging
 logging:
