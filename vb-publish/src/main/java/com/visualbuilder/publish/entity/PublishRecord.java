@@ -17,11 +17,13 @@ public class PublishRecord implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private Long projectId;
     private Long pageId;
     private Integer versionNo;
     private Integer status;
     private String accessUrl;
     private String changelog;
+    private String failedReason;
     private Long publishedBy;
     private LocalDateTime publishedAt;
     private LocalDateTime createdTime;

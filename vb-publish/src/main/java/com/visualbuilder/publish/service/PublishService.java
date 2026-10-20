@@ -8,4 +8,7 @@ import com.visualbuilder.publish.entity.PublishRecord;
 public interface PublishService extends BaseService<PublishRecord> {
     PublishResultVO publish(Long projectId, Long pageId, String changelog);
     PageResult<PublishRecord> getPublishHistory(Long projectId, int page, int pageSize);
+    PublishRecord getPublishStatus(Long recordId);
+    void markSuccess(Long recordId, String accessUrl);
+    void markFailed(Long recordId, String reason);
 }

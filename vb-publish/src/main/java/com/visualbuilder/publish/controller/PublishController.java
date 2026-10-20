@@ -28,6 +28,12 @@ public class PublishController {
         return R.ok(publishService.publish(projectId, pageId, changelog));
     }
 
+    @Operation(summary = "查询发布状态")
+    @GetMapping("/api/v1/publish-records/{recordId}/status")
+    public R<PublishRecord> publishStatus(@PathVariable Long recordId) {
+        return R.ok(publishService.getPublishStatus(recordId));
+    }
+
     @Operation(summary = "发布历史（分页）")
     @GetMapping("/api/v1/projects/{projectId}/publish-history")
     public R<PageResult<PublishRecord>> publishHistory(

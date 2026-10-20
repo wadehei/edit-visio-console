@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public class PublishResultVO {
     private Long id;
     private Integer versionNo;
+    private Integer status;
     private String accessUrl;
     private LocalDateTime publishedAt;
 }
