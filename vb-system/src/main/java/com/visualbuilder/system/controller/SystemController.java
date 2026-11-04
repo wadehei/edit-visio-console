@@ -43,6 +43,7 @@ public class SystemController {
     }
 
     @Operation(summary = "操作日志（分页）")
+    @RequiresRole("SUPER_ADMIN")
     @GetMapping("/logs")
     public R<PageResult<SysLog>> logs(
             @RequestParam(required = false) String module,
@@ -52,6 +53,7 @@ public class SystemController {
     }
 
     @Operation(summary = "登录日志（分页）")
+    @RequiresRole("SUPER_ADMIN")
     @GetMapping("/login-logs")
     public R<PageResult<LoginLog>> loginLogs(
             @RequestParam(required = false) String username,

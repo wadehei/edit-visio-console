@@ -64,7 +64,7 @@ public class AdminRoleController {
     @OpLog(module = "角色管理", action = "删除角色")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        adminRoleService.removeById(id);
+        adminRoleService.deleteRole(id);
         return R.ok();
     }
 

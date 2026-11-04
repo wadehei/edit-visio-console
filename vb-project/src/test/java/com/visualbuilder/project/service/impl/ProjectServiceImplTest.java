@@ -1,5 +1,6 @@
 package com.visualbuilder.project.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.utils.SecurityUtils;
@@ -150,6 +151,33 @@ class ProjectServiceImplTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> projectService.copyProject(1L));
         assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("列表可见范围为本人创建及作为成员加入的项目")
+    void listProjects_includesMemberProjects() {
+        SecurityUtils.setContext(1L, "tester");
+        when(projectMemberService.listProjectIdsByUser(1L)).thenReturn(List.of(8L));
+
+        Page<Project> pageResult = new Page<>(1, 10);
+        pageResult.setRecords(List.of(createMockProject(1L, "自己的项目")));
+        pageResult.setTotal(1L);
+        when(projectMapper.selectPage(any(), any())).thenReturn(pageResult);
+
+        var result = projectService.listProjects(1, 10, null, null);
+
+        assertEquals(1, result.getList().size());
+        verify(projectMemberService).listProjectIdsByUser(1L);
+    }
+
+    @Test
+    @DisplayName("未登录查询列表抛出 UNAUTHORIZED")
+    void listProjects_unauthenticated() {
+        SecurityUtils.clearContext();
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> projectService.listProjects(1, 10, null, null));
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
     private Project createMockProject(Long projectId, String name) {

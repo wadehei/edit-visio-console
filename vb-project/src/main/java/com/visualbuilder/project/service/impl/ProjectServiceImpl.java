@@ -80,7 +80,14 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
-        wrapper.eq(Project::getUserId, userId);
+        // 可见范围：本人创建的项目 + 作为成员加入的项目
+        List<Long> memberProjectIds = projectMemberService.listProjectIdsByUser(userId);
+        wrapper.and(w -> {
+            w.eq(Project::getUserId, userId);
+            if (!memberProjectIds.isEmpty()) {
+                w.or().in(Project::getId, memberProjectIds);
+            }
+        });
 
         wrapper.orderByDesc(Project::getUpdatedTime);
 
@@ -328,6 +335,15 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         String coverUrl = (String) projectData.get("coverUrl");
         Integer status = projectData.get("status") != null ?
                 ((Number) projectData.get("status")).intValue() : StatusConst.Project.DRAFT;
+        // 边界校验：导入的 status 必须为合法项目状态，避免外部数据写入非法值
+        if (status != StatusConst.Project.DRAFT
+                && status != StatusConst.Project.PUBLISHED
+                && status != StatusConst.Project.ARCHIVED) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "导入项目状态非法，仅允许 " + StatusConst.Project.DRAFT + "(草稿)、"
+                            + StatusConst.Project.PUBLISHED + "(已发布) 或 "
+                            + StatusConst.Project.ARCHIVED + "(已归档)");
+        }
         Object settings = projectData.get("settings");
 
         Project project = new Project();

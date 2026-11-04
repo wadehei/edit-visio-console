@@ -16,7 +16,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -196,5 +198,25 @@ class ProjectMemberServiceImplTest {
         when(projectMemberMapper.selectOne(any(), anyBoolean())).thenReturn(member);
 
         assertTrue(memberService.hasProjectRole(1L, 9L, "edit"));
+    }
+
+    @Test
+    @DisplayName("查询用户作为成员加入的项目 ID 列表")
+    void listProjectIdsByUser_returnsIds() {
+        ProjectMember m1 = new ProjectMember();
+        m1.setProjectId(1L);
+        m1.setUserId(9L);
+        ProjectMember m2 = new ProjectMember();
+        m2.setProjectId(2L);
+        m2.setUserId(9L);
+        when(projectMemberMapper.selectList(any())).thenReturn(Arrays.asList(m1, m2));
+
+        assertEquals(List.of(1L, 2L), memberService.listProjectIdsByUser(9L));
+    }
+
+    @Test
+    @DisplayName("用户 ID 为空时返回空列表")
+    void listProjectIdsByUser_nullUser() {
+        assertTrue(memberService.listProjectIdsByUser(null).isEmpty());
     }
 }

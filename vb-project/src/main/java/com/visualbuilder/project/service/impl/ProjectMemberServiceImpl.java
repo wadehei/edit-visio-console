@@ -222,6 +222,19 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
     }
 
     @Override
+    public List<Long> listProjectIdsByUser(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return this.list(new LambdaQueryWrapper<ProjectMember>()
+                        .eq(ProjectMember::getUserId, userId))
+                .stream()
+                .map(ProjectMember::getProjectId)
+                .distinct()
+                .toList();
+    }
+
+    @Override
     public String getMemberPermission(Long projectId, Long userId) {
         ProjectMember member = this.getOne(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)

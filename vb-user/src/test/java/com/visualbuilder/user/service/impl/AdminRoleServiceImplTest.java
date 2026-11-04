@@ -87,4 +87,26 @@ class AdminRoleServiceImplTest {
         verify(rolePermissionMapper).delete(any());
         verify(rolePermissionMapper, never()).batchInsert(any());
     }
+
+    @Test
+    @DisplayName("删除角色时级联清理角色-权限关联")
+    void deleteRole_cleansRolePermission() {
+        when(roleMapper.selectById(5L)).thenReturn(role(5L));
+
+        roleService.deleteRole(5L);
+
+        verify(rolePermissionMapper).delete(any());
+        verify(roleMapper).deleteById(5L);
+    }
+
+    @Test
+    @DisplayName("删除不存在的角色抛出 DATA_NOT_FOUND")
+    void deleteRole_notFound() {
+        when(roleMapper.selectById(9L)).thenReturn(null);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> roleService.deleteRole(9L));
+        assertEquals(ErrorCode.DATA_NOT_FOUND, ex.getCode());
+        verify(rolePermissionMapper, never()).delete(any());
+    }
 }

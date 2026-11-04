@@ -2,6 +2,7 @@ package com.visualbuilder.system.service.impl;
 
 import com.visualbuilder.system.entity.SysPermission;
 import com.visualbuilder.system.mapper.SysPermissionMapper;
+import com.visualbuilder.system.mapper.SysRolePermissionMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,10 +15,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
- * AdminPermissionServiceImpl 单元测试 — 聚焦权限树递归构建。
+ * AdminPermissionServiceImpl 单元测试 — 聚焦权限树递归构建与级联删除。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AdminPermissionServiceImpl 权限树")
@@ -26,11 +27,14 @@ class AdminPermissionServiceImplTest {
     @Mock
     private SysPermissionMapper permissionMapper;
 
+    @Mock
+    private SysRolePermissionMapper rolePermissionMapper;
+
     private AdminPermissionServiceImpl permissionService;
 
     @BeforeEach
     void setUp() {
-        permissionService = new AdminPermissionServiceImpl();
+        permissionService = new AdminPermissionServiceImpl(rolePermissionMapper);
         ReflectionTestUtils.setField(permissionService, "baseMapper", permissionMapper);
     }
 
@@ -70,5 +74,26 @@ class AdminPermissionServiceImplTest {
         when(permissionMapper.selectList(any())).thenReturn(List.of(perm(2L, 1L, "孤儿节点")));
 
         assertTrue(permissionService.getPermissionTree().isEmpty());
+    }
+
+    @Test
+    @DisplayName("删除权限时级联清理角色-权限关联")
+    void deletePermission_cleansRolePermission() {
+        when(permissionMapper.selectById(4L)).thenReturn(perm(4L, 0L, "系统管理"));
+
+        permissionService.deletePermission(4L);
+
+        verify(rolePermissionMapper).delete(any());
+        verify(permissionMapper).deleteById(4L);
+    }
+
+    @Test
+    @DisplayName("删除不存在的权限抛出 DATA_NOT_FOUND")
+    void deletePermission_notFound() {
+        when(permissionMapper.selectById(9L)).thenReturn(null);
+
+        assertThrows(com.visualbuilder.common.core.exception.BusinessException.class,
+                () -> permissionService.deletePermission(9L));
+        verify(rolePermissionMapper, never()).delete(any());
     }
 }

@@ -12,4 +12,6 @@ public interface AdminUserService extends BaseService<SysUser> {
     void updateUser(Long userId, AdminUserUpdateDTO dto);
     void resetPassword(Long userId, String newPassword);
     void updateStatus(Long userId, Integer status);
+    /** 删除用户，并级联清理用户-角色关联 */
+    void deleteUser(Long userId);
 }

@@ -108,4 +108,18 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
         log.info("分配角色权限: roleId={}, permissionCount={}", roleId,
                 permissionIds != null ? permissionIds.size() : 0);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteRole(Long roleId) {
+        SysRole role = this.getById(roleId);
+        if (role == null) {
+            throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "角色不存在");
+        }
+        // 先清理角色-权限关联，避免删除角色后残留孤儿数据
+        rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
+                .eq(SysRolePermission::getRoleId, roleId));
+        this.removeById(roleId);
+        log.info("删除角色: roleId={}", roleId);
+    }
 }

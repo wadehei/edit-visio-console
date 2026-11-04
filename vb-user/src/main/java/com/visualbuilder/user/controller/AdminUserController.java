@@ -66,7 +66,7 @@ public class AdminUserController {
     @OpLog(module = "用户管理", action = "删除用户")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        adminUserService.removeById(id);
+        adminUserService.deleteUser(id);
         return R.ok();
     }
 

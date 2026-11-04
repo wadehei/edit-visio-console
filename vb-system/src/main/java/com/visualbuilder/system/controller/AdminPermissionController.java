@@ -60,7 +60,7 @@ public class AdminPermissionController {
     @OpLog(module = "权限管理", action = "删除权限")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        adminPermissionService.removeById(id);
+        adminPermissionService.deletePermission(id);
         return R.ok();
     }
 }

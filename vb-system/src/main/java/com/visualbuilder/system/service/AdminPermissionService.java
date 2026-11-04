@@ -11,4 +11,6 @@ public interface AdminPermissionService extends BaseService<SysPermission> {
     List<SysPermission> getPermissionTree();
     void createPermission(PermissionCreateDTO dto);
     void updatePermission(Long permissionId, PermissionUpdateDTO dto);
+    /** 删除权限，并级联清理角色-权限关联 */
+    void deletePermission(Long permissionId);
 }

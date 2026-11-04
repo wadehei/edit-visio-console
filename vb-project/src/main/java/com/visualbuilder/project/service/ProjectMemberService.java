@@ -2,7 +2,7 @@
  * @Author: songshaohui shaohui.song@hjlysz.com
  * @Date: 2026-10-21 00:39:27
  * @LastEditors: songshaohui shaohui.song@hjlysz.com
- * @LastEditTime: 2026-11-04 11:59:07
+ * @LastEditTime: 2026-11-04 14:49:10
  * @FilePath: \edit-visio-console\vb-project\src\main\java\com\visualbuilder\project\service\ProjectMemberService.java
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -25,6 +25,8 @@ public interface ProjectMemberService extends BaseService<ProjectMember> {
     boolean isProjectMember(Long projectId, Long userId);
     /** 判断用户是否为项目所有者或项目成员 */
     boolean isProjectOwnerOrMember(Long projectId, Long userId);
+    /** 查询用户作为成员加入的全部项目 ID（不含其作为所有者的项目） */
+    List<Long> listProjectIdsByUser(Long userId);
     String getMemberPermission(Long projectId, Long userId);
     /**
      * 校验用户对项目的角色是否达到最低要求（view &lt; edit &lt; admin &lt; owner）。

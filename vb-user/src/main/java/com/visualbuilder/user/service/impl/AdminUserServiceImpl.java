@@ -11,7 +11,9 @@ import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.user.dto.AdminUserCreateDTO;
 import com.visualbuilder.user.dto.AdminUserUpdateDTO;
 import com.visualbuilder.user.entity.SysUser;
+import com.visualbuilder.user.entity.SysUserRole;
 import com.visualbuilder.user.mapper.SysUserMapper;
+import com.visualbuilder.user.mapper.SysUserRoleMapper;
 import com.visualbuilder.user.service.AdminUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,7 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
 
     private final PasswordEncoder passwordEncoder;
     private final StringRedisTemplate redisTemplate;
+    private final SysUserRoleMapper userRoleMapper;
 
     /** 禁用标记有效期，取刷新令牌有效期（秒），确保禁用状态覆盖令牌最长生命周期 */
     @Value("${jwt.refresh-token-expire:604800}")
@@ -133,6 +136,20 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
             redisTemplate.delete(disabledKey);
         }
         log.info("管理员更新用户状态: userId={}, status={}", userId, status);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteUser(Long userId) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND, "用户不存在");
+        }
+        // 先清理用户-角色关联，避免删除用户后残留孤儿数据
+        userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>()
+                .eq(SysUserRole::getUserId, userId));
+        this.removeById(userId);
+        log.info("删除用户: userId={}", userId);
     }
 
     /**

@@ -8,7 +8,9 @@ import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.system.dto.PermissionCreateDTO;
 import com.visualbuilder.system.dto.PermissionUpdateDTO;
 import com.visualbuilder.system.entity.SysPermission;
+import com.visualbuilder.system.entity.SysRolePermission;
 import com.visualbuilder.system.mapper.SysPermissionMapper;
+import com.visualbuilder.system.mapper.SysRolePermissionMapper;
 import com.visualbuilder.system.service.AdminPermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminPermissionServiceImpl extends BaseServiceImpl<SysPermissionMapper, SysPermission>
         implements AdminPermissionService {
+
+    private final SysRolePermissionMapper rolePermissionMapper;
 
     @Override
     public List<SysPermission> getPermissionTree() {
@@ -73,6 +77,20 @@ public class AdminPermissionServiceImpl extends BaseServiceImpl<SysPermissionMap
         if (dto.getApiPath() != null) permission.setApiPath(dto.getApiPath());
         if (dto.getRemark() != null) permission.setRemark(dto.getRemark());
         this.updateById(permission);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deletePermission(Long permissionId) {
+        SysPermission permission = this.getById(permissionId);
+        if (permission == null) {
+            throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "权限不存在");
+        }
+        // 先清理角色-权限关联，避免删除权限后残留孤儿数据
+        rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
+                .eq(SysRolePermission::getPermissionId, permissionId));
+        this.removeById(permissionId);
+        log.info("删除权限: permissionId={}", permissionId);
     }
 
     /**

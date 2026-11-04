@@ -13,4 +13,6 @@ public interface AdminRoleService extends BaseService<SysRole> {
     void createRole(RoleCreateDTO dto);
     void updateRole(Long roleId, RoleUpdateDTO dto);
     void assignPermissions(Long roleId, List<Long> permissionIds);
+    /** 删除角色，并级联清理角色-权限关联 */
+    void deleteRole(Long roleId);
 }
