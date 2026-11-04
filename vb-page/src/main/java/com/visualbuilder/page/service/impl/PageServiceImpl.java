@@ -18,6 +18,7 @@ import com.visualbuilder.page.entity.PageVersion;
 import com.visualbuilder.page.mapper.PageMapper;
 import com.visualbuilder.page.mapper.PageVersionMapper;
 import com.visualbuilder.page.service.PageService;
+import com.visualbuilder.project.service.ProjectMemberService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,6 +39,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
 
     private final PageVersionMapper pageVersionMapper;
     private final ObjectMapper objectMapper;
+    private final ProjectMemberService projectMemberService;
 
     @Value("${business.page.max-version-count:50}")
     private int maxVersionCount;
@@ -71,11 +73,30 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
+        // 权限校验：页面创建者、项目所有者或项目成员可访问（未登录一律拒绝）
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        if (!currentUserId.equals(page.getUserId())
+                && !projectMemberService.isProjectOwnerOrMember(page.getProjectId(), currentUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该页面");
+        }
         return toVO(page);
     }
 
     @Override
     public PageResult<PageVO> listPages(Long projectId, int page, int pageSize, String keyword) {
+        // 未登录一律拒绝
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        // 权限校验：仅项目所有者或项目成员可查看页面列表（与详情接口保持一致）
+        if (!projectMemberService.isProjectOwnerOrMember(projectId, currentUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
+        }
+
         LambdaQueryWrapper<Page> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Page::getProjectId, projectId);
         if (StringUtils.hasText(keyword)) {

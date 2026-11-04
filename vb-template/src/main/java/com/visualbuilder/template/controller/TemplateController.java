@@ -4,11 +4,14 @@ import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
 import com.visualbuilder.template.dto.TemplateApplyVO;
+import com.visualbuilder.template.dto.TemplateCreateDTO;
 import com.visualbuilder.template.dto.TemplateDetailVO;
+import com.visualbuilder.template.dto.TemplateUpdateDTO;
 import com.visualbuilder.template.entity.Template;
 import com.visualbuilder.template.service.TemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -50,8 +53,8 @@ public class TemplateController {
     @OpLog(module = "模板管理", action = "创建模板")
     @Operation(summary = "创建模板")
     @PostMapping
-    public R<Void> create(@RequestBody Template template) {
-        templateService.createTemplate(template);
+    public R<Void> create(@Valid @RequestBody TemplateCreateDTO dto) {
+        templateService.createTemplate(dto);
         return R.ok();
     }
 
@@ -59,8 +62,8 @@ public class TemplateController {
     @OpLog(module = "模板管理", action = "更新模板")
     @Operation(summary = "更新模板")
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @RequestBody Template template) {
-        templateService.updateTemplate(id, template);
+    public R<Void> update(@PathVariable Long id, @Valid @RequestBody TemplateUpdateDTO dto) {
+        templateService.updateTemplate(id, dto);
         return R.ok();
     }
 

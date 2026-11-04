@@ -7,6 +7,8 @@ import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
+import com.visualbuilder.user.dto.RoleCreateDTO;
+import com.visualbuilder.user.dto.RoleUpdateDTO;
 import com.visualbuilder.user.entity.SysRolePermission;
 import com.visualbuilder.user.mapper.SysRolePermissionMapper;
 import com.visualbuilder.user.entity.SysRole;
@@ -40,31 +42,41 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createRole(SysRole role) {
+    public void createRole(RoleCreateDTO dto) {
         long count = this.count(new LambdaQueryWrapper<SysRole>()
-                .eq(SysRole::getRoleKey, role.getRoleKey()));
+                .eq(SysRole::getRoleKey, dto.getRoleKey()));
         if (count > 0) {
             throw new BusinessException(ErrorCode.DATA_ALREADY_EXISTS, "角色标识已存在");
         }
-        if (role.getStatus() == null) {
-            role.setStatus(StatusConst.Enable.ENABLED);
+        SysRole role = new SysRole();
+        role.setRoleName(dto.getRoleName());
+        role.setRoleKey(dto.getRoleKey());
+        role.setSortOrder(dto.getSortOrder());
+        role.setDataScope(dto.getDataScope());
+        role.setStatus(dto.getStatus() != null ? dto.getStatus() : StatusConst.Enable.ENABLED);
+        role.setRemark(dto.getRemark());
+        role.setTenantId(0L);
+        try {
+            this.save(role);
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // 并发创建同一角色标识时，依赖数据库唯一约束兜底
+            throw new BusinessException(ErrorCode.DATA_ALREADY_EXISTS, "角色标识已存在");
         }
-        this.save(role);
         log.info("创建角色: roleKey={}", role.getRoleKey());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateRole(Long roleId, SysRole updates) {
+    public void updateRole(Long roleId, RoleUpdateDTO dto) {
         SysRole role = this.getById(roleId);
         if (role == null) {
             throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "角色不存在");
         }
-        if (StringUtils.hasText(updates.getRoleName())) role.setRoleName(updates.getRoleName());
-        if (updates.getSortOrder() != null) role.setSortOrder(updates.getSortOrder());
-        if (updates.getStatus() != null) role.setStatus(updates.getStatus());
-        if (updates.getDataScope() != null) role.setDataScope(updates.getDataScope());
-        if (updates.getRemark() != null) role.setRemark(updates.getRemark());
+        if (dto.getRoleName() != null) role.setRoleName(dto.getRoleName());
+        if (dto.getSortOrder() != null) role.setSortOrder(dto.getSortOrder());
+        if (dto.getStatus() != null) role.setStatus(dto.getStatus());
+        if (dto.getDataScope() != null) role.setDataScope(dto.getDataScope());
+        if (dto.getRemark() != null) role.setRemark(dto.getRemark());
         this.updateById(role);
     }
 

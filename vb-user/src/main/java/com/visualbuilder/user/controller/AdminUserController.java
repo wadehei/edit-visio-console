@@ -4,10 +4,14 @@ import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
+import com.visualbuilder.user.dto.AdminUserCreateDTO;
+import com.visualbuilder.user.dto.AdminUserUpdateDTO;
+import com.visualbuilder.user.dto.ResetPasswordDTO;
 import com.visualbuilder.user.entity.SysUser;
 import com.visualbuilder.user.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,8 +47,8 @@ public class AdminUserController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "用户管理", action = "创建用户")
     @PostMapping
-    public R<Void> create(@RequestBody SysUser user) {
-        adminUserService.createUser(user);
+    public R<Void> create(@Valid @RequestBody AdminUserCreateDTO dto) {
+        adminUserService.createUser(dto);
         return R.ok();
     }
 
@@ -52,8 +56,8 @@ public class AdminUserController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "用户管理", action = "更新用户")
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @RequestBody SysUser user) {
-        adminUserService.updateUser(id, user);
+    public R<Void> update(@PathVariable Long id, @Valid @RequestBody AdminUserUpdateDTO dto) {
+        adminUserService.updateUser(id, dto);
         return R.ok();
     }
 
@@ -70,8 +74,8 @@ public class AdminUserController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "用户管理", action = "重置密码")
     @PutMapping("/{id}/reset-password")
-    public R<Void> resetPassword(@PathVariable Long id, @RequestParam String newPassword) {
-        adminUserService.resetPassword(id, newPassword);
+    public R<Void> resetPassword(@PathVariable Long id, @Valid @RequestBody ResetPasswordDTO dto) {
+        adminUserService.resetPassword(id, dto.getNewPassword());
         return R.ok();
     }
 

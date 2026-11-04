@@ -3,10 +3,13 @@ package com.visualbuilder.page.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.page.dto.PageVO;
 import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.mapper.PageMapper;
 import com.visualbuilder.page.mapper.PageVersionMapper;
+import com.visualbuilder.project.service.ProjectMemberService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,9 @@ class PageServiceImplTest {
     @Mock
     private PageVersionMapper pageVersionMapper;
 
+    @Mock
+    private ProjectMemberService projectMemberService;
+
     private PageServiceImpl pageService;
 
     private ObjectMapper objectMapper;
@@ -45,8 +51,13 @@ class PageServiceImplTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        pageService = new PageServiceImpl(pageVersionMapper, objectMapper);
+        pageService = new PageServiceImpl(pageVersionMapper, objectMapper, projectMemberService);
         ReflectionTestUtils.setField(pageService, "baseMapper", pageMapper);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityUtils.clearContext();
     }
 
     @Test
@@ -95,12 +106,25 @@ class PageServiceImplTest {
     void getPageDetail_success() {
         Page page = createMockPage(1L, 100L, "测试页面");
         when(pageMapper.selectById(1L)).thenReturn(page);
+        // 模拟已登录且为页面所有者（userId=1）
+        SecurityUtils.setContext(1L, "tester");
 
         PageVO result = pageService.getPageDetail(1L);
 
         assertNotNull(result);
         assertEquals("测试页面", result.getTitle());
         assertEquals(100L, result.getProjectId());
+    }
+
+    @Test
+    @DisplayName("未登录访问页面详情抛出 UNAUTHORIZED")
+    void getPageDetail_unauthenticated() {
+        Page page = createMockPage(1L, 100L, "测试页面");
+        when(pageMapper.selectById(1L)).thenReturn(page);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.getPageDetail(1L));
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
     @Test

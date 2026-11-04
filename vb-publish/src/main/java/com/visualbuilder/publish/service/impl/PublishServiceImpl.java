@@ -3,6 +3,7 @@ package com.visualbuilder.publish.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.RedisKeyConst;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
@@ -17,11 +18,16 @@ import com.visualbuilder.publish.mq.PublishTaskProducer;
 import com.visualbuilder.publish.service.PublishService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -31,6 +37,7 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
 
     private final PageService pageService;
     private final PublishTaskProducer publishTaskProducer;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -44,7 +51,49 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
             throw new BusinessException(ErrorCode.PUBLISH_FAILED, "页面内容为空，无法发布");
         }
 
-        // 2. 检查是否已有进行中的发布任务（防并发）
+        Long userId = SecurityUtils.getCurrentUserId();
+
+        // 2. 检查是否已有进行中的发布任务（防并发，使用 Redis 分布式锁）
+        String lockKey = RedisKeyConst.publishLock(pageId);
+        String lockValue = UUID.randomUUID().toString();
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, lockValue, Duration.ofMinutes(5));
+        if (!Boolean.TRUE.equals(locked)) {
+            throw new BusinessException(ErrorCode.PUBLISH_FAILED, "当前有正在发布中的任务，请稍后再试");
+        }
+
+        try {
+            return doPublish(projectId, pageId, changelog, userId);
+        } finally {
+            // 必须在事务提交/回滚之后再释放锁，否则会出现"锁已释放但数据未提交"的并发漏洞
+            releaseLockAfterTransaction(lockKey, lockValue);
+        }
+    }
+
+    /**
+     * 在当前事务完成后（提交或回滚）释放锁，并校验锁归属，避免误删他人持有的锁。
+     * 若不在事务上下文中，则立即释放。
+     */
+    private void releaseLockAfterTransaction(String lockKey, String lockValue) {
+        Runnable release = () -> {
+            String current = redisTemplate.opsForValue().get(lockKey);
+            if (lockValue.equals(current)) {
+                redisTemplate.delete(lockKey);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    release.run();
+                }
+            });
+        } else {
+            release.run();
+        }
+    }
+
+    private PublishResultVO doPublish(Long projectId, Long pageId, String changelog, Long userId) {
+        // 二次检查 PENDING 状态（锁内校验）
         long pendingCount = this.count(new LambdaQueryWrapper<PublishRecord>()
                 .eq(PublishRecord::getPageId, pageId)
                 .eq(PublishRecord::getStatus, StatusConst.Publish.PENDING));
@@ -53,7 +102,6 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
         }
 
         // 3. 计算下一个版本号
-        Long userId = SecurityUtils.getCurrentUserId();
         PublishRecord latest = this.getOne(new LambdaQueryWrapper<PublishRecord>()
                 .eq(PublishRecord::getPageId, pageId)
                 .orderByDesc(PublishRecord::getVersionNo)

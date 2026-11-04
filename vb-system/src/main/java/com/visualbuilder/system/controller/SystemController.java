@@ -25,6 +25,7 @@ public class SystemController {
     private final SystemService systemService;
 
     @Operation(summary = "获取系统配置")
+    @RequiresRole("SUPER_ADMIN")
     @GetMapping("/configs")
     public R<List<SysConfig>> configs() {
         return R.ok(systemService.getConfigs());

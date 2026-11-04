@@ -8,6 +8,8 @@ import com.visualbuilder.common.core.base.BaseServiceImpl;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.component.dto.ComponentCreateDTO;
+import com.visualbuilder.component.dto.ComponentUpdateDTO;
 import com.visualbuilder.component.dto.ComponentVO;
 import com.visualbuilder.component.entity.Component;
 import com.visualbuilder.component.mapper.ComponentMapper;
@@ -79,10 +81,18 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
 
     @Override
     @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
-    public void createComponent(Component component) {
-        if (component.getStatus() == null) {
-            component.setStatus(StatusConst.Enable.ENABLED);
-        }
+    public void createComponent(ComponentCreateDTO dto) {
+        Component component = new Component();
+        component.setName(dto.getName());
+        component.setType(dto.getType());
+        component.setCategoryId(dto.getCategoryId());
+        component.setDescription(dto.getDescription());
+        component.setThumbnail(dto.getThumbnail());
+        component.setSchemaDefine(dto.getSchemaDefine());
+        component.setDefaultProps(dto.getDefaultProps());
+        component.setDefaultStyles(dto.getDefaultStyles());
+        component.setSortOrder(dto.getSortOrder());
+        component.setStatus(dto.getStatus() != null ? dto.getStatus() : StatusConst.Enable.ENABLED);
         this.save(component);
         evictCache();
         log.info("创建组件: name={}", component.getName());
@@ -90,18 +100,18 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
 
     @Override
     @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
-    public void updateComponent(Long componentId, Component updates) {
+    public void updateComponent(Long componentId, ComponentUpdateDTO dto) {
         Component component = this.getById(componentId);
         if (component == null) throw new BusinessException(ErrorCode.COMPONENT_NOT_FOUND, "组件不存在");
-        if (updates.getName() != null) component.setName(updates.getName());
-        if (updates.getDescription() != null) component.setDescription(updates.getDescription());
-        if (updates.getThumbnail() != null) component.setThumbnail(updates.getThumbnail());
-        if (updates.getSchemaDefine() != null) component.setSchemaDefine(updates.getSchemaDefine());
-        if (updates.getDefaultProps() != null) component.setDefaultProps(updates.getDefaultProps());
-        if (updates.getDefaultStyles() != null) component.setDefaultStyles(updates.getDefaultStyles());
-        if (updates.getCategoryId() != null) component.setCategoryId(updates.getCategoryId());
-        if (updates.getSortOrder() != null) component.setSortOrder(updates.getSortOrder());
-        if (updates.getStatus() != null) component.setStatus(updates.getStatus());
+        if (dto.getName() != null) component.setName(dto.getName());
+        if (dto.getDescription() != null) component.setDescription(dto.getDescription());
+        if (dto.getThumbnail() != null) component.setThumbnail(dto.getThumbnail());
+        if (dto.getSchemaDefine() != null) component.setSchemaDefine(dto.getSchemaDefine());
+        if (dto.getDefaultProps() != null) component.setDefaultProps(dto.getDefaultProps());
+        if (dto.getDefaultStyles() != null) component.setDefaultStyles(dto.getDefaultStyles());
+        if (dto.getCategoryId() != null) component.setCategoryId(dto.getCategoryId());
+        if (dto.getSortOrder() != null) component.setSortOrder(dto.getSortOrder());
+        if (dto.getStatus() != null) component.setStatus(dto.getStatus());
         this.updateById(component);
         evictCache();
     }

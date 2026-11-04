@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.project.dto.BatchResultVO;
+import com.visualbuilder.project.dto.ProjectMemberAddDTO;
 import com.visualbuilder.project.entity.Project;
 import com.visualbuilder.project.entity.ProjectMember;
 import com.visualbuilder.project.mapper.ProjectMapper;
@@ -15,9 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -56,7 +56,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> batchAddMembers(Long projectId, List<Map<String, Object>> members) {
+    public BatchResultVO batchAddMembers(Long projectId, List<ProjectMemberAddDTO> members) {
         if (members == null || members.isEmpty()) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "成员列表不能为空");
         }
@@ -67,23 +67,21 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         int success = 0;
         int skipped = 0;
 
-        for (Map<String, Object> memberData : members) {
+        for (ProjectMemberAddDTO dto : members) {
             try {
-                Long userId = Long.valueOf(memberData.get("userId").toString());
-                String permission = memberData.getOrDefault("permission", "view").toString();
-                addMember(projectId, userId, permission);
+                addMember(projectId, dto.getUserId(), dto.getPermission());
                 success++;
             } catch (Exception e) {
                 skipped++;
-                log.warn("批量添加成员失败: {}", e.getMessage());
+                log.warn("批量添加成员失败: userId={}, error={}", dto.getUserId(), e.getMessage());
             }
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("total", members.size());
-        result.put("success", success);
-        result.put("skipped", skipped);
-        return result;
+        return BatchResultVO.builder()
+                .total(members.size())
+                .success(success)
+                .skipped(skipped)
+                .build();
     }
 
     @Override
@@ -157,6 +155,18 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
                 .eq(ProjectMember::getProjectId, projectId)
                 .eq(ProjectMember::getUserId, userId));
         return count > 0;
+    }
+
+    @Override
+    public boolean isProjectOwnerOrMember(Long projectId, Long userId) {
+        if (projectId == null || userId == null) {
+            return false;
+        }
+        Project project = projectMapper.selectById(projectId);
+        if (project != null && userId.equals(project.getUserId())) {
+            return true;
+        }
+        return isProjectMember(projectId, userId);
     }
 
     @Override

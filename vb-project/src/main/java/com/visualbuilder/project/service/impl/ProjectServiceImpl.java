@@ -11,7 +11,9 @@ import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.project.dto.ProjectCreateDTO;
 import com.visualbuilder.project.dto.ProjectVO;
 import com.visualbuilder.project.entity.Project;
+import com.visualbuilder.project.entity.ProjectMember;
 import com.visualbuilder.project.mapper.ProjectMapper;
+import com.visualbuilder.project.service.ProjectMemberService;
 import com.visualbuilder.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         implements ProjectService {
+
+    private final ProjectMemberService projectMemberService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -56,6 +60,15 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         if (project == null) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
+        // 权限校验：仅项目所有者或成员才能查看详情（未登录一律拒绝）
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        if (!currentUserId.equals(project.getUserId())
+                && !projectMemberService.isProjectMember(projectId, currentUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
+        }
         return toVO(project);
     }
 
@@ -71,9 +84,10 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         }
 
         Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null) {
-            wrapper.eq(Project::getUserId, userId);
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
+        wrapper.eq(Project::getUserId, userId);
 
         wrapper.orderByDesc(Project::getUpdatedTime);
 

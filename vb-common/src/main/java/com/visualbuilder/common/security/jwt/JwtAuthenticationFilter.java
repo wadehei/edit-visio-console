@@ -1,5 +1,9 @@
 package com.visualbuilder.common.security.jwt;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.visualbuilder.common.core.constant.RedisKeyConst;
+import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -28,6 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
 
     private static final String AUTH_HEADER = "Authorization";
     private static final String TOKEN_PREFIX = "Bearer ";
@@ -39,15 +44,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = extractToken(request);
 
         if (StringUtils.hasText(token) && jwtUtils.validateToken(token)) {
-            // 检查黑名单
-            String jti = jwtUtils.getJti(token);
-            if (Boolean.TRUE.equals(redisTemplate.hasKey("token:blacklist:" + jti))) {
-                filterChain.doFilter(request, response);
+            Claims claims = jwtUtils.parseToken(token);
+            String jti = claims.getId();
+            Long userId = Long.parseLong(claims.getSubject());
+
+            // 一次性批量查询黑名单与禁用标记（MGET，避免多次 Redis 往返）
+            List<String> cacheKeys = List.of(
+                    RedisKeyConst.tokenBlacklist(jti),
+                    RedisKeyConst.userDisabled(userId));
+            List<String> cacheValues = redisTemplate.opsForValue().multiGet(cacheKeys);
+
+            // 检查 token 黑名单（logout 后 token 被加入黑名单）
+            if (cacheValues != null && cacheValues.size() > 0 && cacheValues.get(0) != null) {
+                writeError(response, HttpServletResponse.SC_UNAUTHORIZED,
+                        ErrorCode.UNAUTHORIZED, "Token已失效，请重新登录");
                 return;
             }
 
-            Claims claims = jwtUtils.parseToken(token);
-            Long userId = Long.parseLong(claims.getSubject());
+            // 检查用户是否被禁用（管理员操作后即时生效）
+            if (cacheValues != null && cacheValues.size() > 1 && cacheValues.get(1) != null) {
+                log.warn("用户已被禁用，拒绝访问: userId={}", userId);
+                writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                        ErrorCode.ACCOUNT_DISABLED, "账号已被禁用，请联系管理员");
+                return;
+            }
+
             String username = claims.get("username", String.class);
 
             // 从 JWT claims 提取角色和权限
@@ -89,5 +110,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return header.substring(TOKEN_PREFIX.length());
         }
         return null;
+    }
+
+    /**
+     * 以统一响应体（{@link R}）输出错误，保证与全局异常处理格式一致。
+     */
+    private void writeError(HttpServletResponse response, int httpStatus, int code, String message)
+            throws IOException {
+        response.setStatus(httpStatus);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write(objectMapper.writeValueAsString(R.fail(code, message)));
     }
 }

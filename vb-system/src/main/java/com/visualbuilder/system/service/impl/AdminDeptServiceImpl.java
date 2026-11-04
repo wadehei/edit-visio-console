@@ -5,6 +5,8 @@ import com.visualbuilder.common.core.base.BaseServiceImpl;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.system.dto.DeptCreateDTO;
+import com.visualbuilder.system.dto.DeptUpdateDTO;
 import com.visualbuilder.system.entity.SysDept;
 import com.visualbuilder.system.mapper.SysDeptMapper;
 import com.visualbuilder.system.service.AdminDeptService;
@@ -12,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -31,35 +32,31 @@ public class AdminDeptServiceImpl extends BaseServiceImpl<SysDeptMapper, SysDept
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createDept(SysDept dept) {
-        if (!StringUtils.hasText(dept.getDeptName())) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "部门名称不能为空");
-        }
-        if (dept.getParentId() == null) {
-            dept.setParentId(0L);
-        }
-        if (dept.getStatus() == null) {
-            dept.setStatus(StatusConst.Enable.ENABLED);
-        }
-        if (dept.getTenantId() == null) {
-            dept.setTenantId(0L);
-        }
+    public void createDept(DeptCreateDTO dto) {
+        SysDept dept = new SysDept();
+        dept.setDeptName(dto.getDeptName());
+        dept.setParentId(dto.getParentId() != null ? dto.getParentId() : 0L);
+        dept.setLeader(dto.getLeader());
+        dept.setPhone(dto.getPhone());
+        dept.setSortOrder(dto.getSortOrder());
+        dept.setStatus(dto.getStatus() != null ? dto.getStatus() : StatusConst.Enable.ENABLED);
+        dept.setTenantId(0L);
         this.save(dept);
         log.info("创建部门: name={}", dept.getDeptName());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateDept(Long deptId, SysDept updates) {
+    public void updateDept(Long deptId, DeptUpdateDTO dto) {
         SysDept dept = this.getById(deptId);
         if (dept == null) {
             throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "部门不存在");
         }
-        if (StringUtils.hasText(updates.getDeptName())) dept.setDeptName(updates.getDeptName());
-        if (updates.getSortOrder() != null) dept.setSortOrder(updates.getSortOrder());
-        if (updates.getStatus() != null) dept.setStatus(updates.getStatus());
-        if (updates.getLeader() != null) dept.setLeader(updates.getLeader());
-        if (updates.getPhone() != null) dept.setPhone(updates.getPhone());
+        if (dto.getDeptName() != null) dept.setDeptName(dto.getDeptName());
+        if (dto.getSortOrder() != null) dept.setSortOrder(dto.getSortOrder());
+        if (dto.getStatus() != null) dept.setStatus(dto.getStatus());
+        if (dto.getLeader() != null) dept.setLeader(dto.getLeader());
+        if (dto.getPhone() != null) dept.setPhone(dto.getPhone());
         this.updateById(dept);
     }
 }

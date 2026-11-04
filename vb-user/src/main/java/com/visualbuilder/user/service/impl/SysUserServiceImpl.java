@@ -2,6 +2,7 @@ package com.visualbuilder.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.RedisKeyConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.ErrorCode;
@@ -19,6 +20,7 @@ import com.visualbuilder.user.mapper.SysUserRoleMapper;
 import com.visualbuilder.user.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -79,7 +81,13 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
         user.setNickname(dto.getUsername());
         user.setStatus(StatusConst.User.NORMAL);
         user.setTenantId(0L);
-        this.save(user);
+
+        try {
+            this.save(user);
+        } catch (DuplicateKeyException e) {
+            // 并发注册同一用户名时，依赖数据库唯一约束兜底
+            throw new BusinessException(ErrorCode.USERNAME_EXISTS, "用户名已存在");
+        }
 
         // 分配默认角色 USER
         assignDefaultRole(user.getId());
@@ -220,12 +228,12 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
             String jti = jwtUtils.getJti(accessToken);
             long ttl = jwtUtils.getRemainingTtl(accessToken);
             if (ttl > 0) {
-                redisTemplate.opsForValue().set("token:blacklist:" + jti, "LOGOUT",
+                redisTemplate.opsForValue().set(RedisKeyConst.tokenBlacklist(jti), "LOGOUT",
                         java.time.Duration.ofMillis(ttl));
             }
             Long userId = SecurityUtils.getCurrentUserId();
             if (userId != null) {
-                redisTemplate.delete("token:refresh:" + userId);
+                redisTemplate.delete(RedisKeyConst.refreshToken(userId));
             }
         } catch (Exception e) {
             log.warn("登出处理异常: {}", e.getMessage());

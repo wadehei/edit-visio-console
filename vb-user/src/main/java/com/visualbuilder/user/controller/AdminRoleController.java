@@ -4,10 +4,13 @@ import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
+import com.visualbuilder.user.dto.RoleCreateDTO;
+import com.visualbuilder.user.dto.RoleUpdateDTO;
 import com.visualbuilder.user.entity.SysRole;
 import com.visualbuilder.user.service.AdminRoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,8 +45,8 @@ public class AdminRoleController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "角色管理", action = "创建角色")
     @PostMapping
-    public R<Void> create(@RequestBody SysRole role) {
-        adminRoleService.createRole(role);
+    public R<Void> create(@Valid @RequestBody RoleCreateDTO dto) {
+        adminRoleService.createRole(dto);
         return R.ok();
     }
 
@@ -51,8 +54,8 @@ public class AdminRoleController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "角色管理", action = "更新角色")
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @RequestBody SysRole role) {
-        adminRoleService.updateRole(id, role);
+    public R<Void> update(@PathVariable Long id, @Valid @RequestBody RoleUpdateDTO dto) {
+        adminRoleService.updateRole(id, dto);
         return R.ok();
     }
 

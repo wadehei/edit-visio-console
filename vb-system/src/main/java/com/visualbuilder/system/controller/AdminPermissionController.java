@@ -3,10 +3,13 @@ package com.visualbuilder.system.controller;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
+import com.visualbuilder.system.dto.PermissionCreateDTO;
+import com.visualbuilder.system.dto.PermissionUpdateDTO;
 import com.visualbuilder.system.entity.SysPermission;
 import com.visualbuilder.system.service.AdminPermissionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,8 +41,8 @@ public class AdminPermissionController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "权限管理", action = "创建权限")
     @PostMapping
-    public R<Void> create(@RequestBody SysPermission permission) {
-        adminPermissionService.createPermission(permission);
+    public R<Void> create(@Valid @RequestBody PermissionCreateDTO dto) {
+        adminPermissionService.createPermission(dto);
         return R.ok();
     }
 
@@ -47,8 +50,8 @@ public class AdminPermissionController {
     @RequiresRole("SUPER_ADMIN")
     @OpLog(module = "权限管理", action = "更新权限")
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @RequestBody SysPermission permission) {
-        adminPermissionService.updatePermission(id, permission);
+    public R<Void> update(@PathVariable Long id, @Valid @RequestBody PermissionUpdateDTO dto) {
+        adminPermissionService.updatePermission(id, dto);
         return R.ok();
     }
 

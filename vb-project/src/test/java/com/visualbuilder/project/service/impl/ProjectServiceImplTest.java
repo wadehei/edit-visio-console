@@ -2,9 +2,12 @@ package com.visualbuilder.project.service.impl;
 
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.project.dto.ProjectVO;
 import com.visualbuilder.project.entity.Project;
 import com.visualbuilder.project.mapper.ProjectMapper;
+import com.visualbuilder.project.service.ProjectMemberService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,12 +34,20 @@ class ProjectServiceImplTest {
     @Mock
     private ProjectMapper projectMapper;
 
+    @Mock
+    private ProjectMemberService projectMemberService;
+
     private ProjectServiceImpl projectService;
 
     @BeforeEach
     void setUp() {
-        projectService = new ProjectServiceImpl();
+        projectService = new ProjectServiceImpl(projectMemberService);
         ReflectionTestUtils.setField(projectService, "baseMapper", projectMapper);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityUtils.clearContext();
     }
 
     @Test
@@ -85,11 +96,24 @@ class ProjectServiceImplTest {
     void getProjectDetail_success() {
         Project project = createMockProject(1L, "测试项目");
         when(projectMapper.selectById(1L)).thenReturn(project);
+        // 模拟已登录且为项目所有者（userId=1）
+        SecurityUtils.setContext(1L, "tester");
 
         ProjectVO result = projectService.getProjectDetail(1L);
 
         assertNotNull(result);
         assertEquals("测试项目", result.getName());
+    }
+
+    @Test
+    @DisplayName("未登录访问项目详情抛出 UNAUTHORIZED")
+    void getProjectDetail_unauthenticated() {
+        Project project = createMockProject(1L, "测试项目");
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> projectService.getProjectDetail(1L));
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
     @Test

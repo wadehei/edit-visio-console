@@ -2,17 +2,21 @@ package com.visualbuilder.project.controller;
 
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
+import com.visualbuilder.project.dto.BatchResultVO;
+import com.visualbuilder.project.dto.ProjectMemberAddDTO;
 import com.visualbuilder.project.entity.ProjectMember;
 import com.visualbuilder.project.service.ProjectMemberService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Tag(name = "项目成员管理")
+@Validated
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/members")
 @RequiredArgsConstructor
@@ -29,18 +33,16 @@ public class ProjectMemberController {
     @Operation(summary = "添加成员")
     @OpLog(module = "项目管理", action = "添加成员")
     @PostMapping
-    public R<Void> add(@PathVariable Long projectId, @RequestBody Map<String, Object> body) {
-        Long userId = Long.valueOf(body.get("userId").toString());
-        String permission = body.getOrDefault("permission", "view").toString();
-        projectMemberService.addMember(projectId, userId, permission);
+    public R<Void> add(@PathVariable Long projectId, @Valid @RequestBody ProjectMemberAddDTO dto) {
+        projectMemberService.addMember(projectId, dto.getUserId(), dto.getPermission());
         return R.ok();
     }
 
     @Operation(summary = "批量添加成员")
     @OpLog(module = "项目管理", action = "批量添加成员")
     @PostMapping("/batch")
-    public R<Map<String, Object>> batchAdd(@PathVariable Long projectId,
-                                           @RequestBody List<Map<String, Object>> members) {
+    public R<BatchResultVO> batchAdd(@PathVariable Long projectId,
+                                     @Valid @RequestBody List<@Valid ProjectMemberAddDTO> members) {
         return R.ok(projectMemberService.batchAddMembers(projectId, members));
     }
 

@@ -9,7 +9,9 @@ import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.mapper.PageMapper;
 import com.visualbuilder.template.dto.TemplateApplyVO;
+import com.visualbuilder.template.dto.TemplateCreateDTO;
 import com.visualbuilder.template.dto.TemplateDetailVO;
+import com.visualbuilder.template.dto.TemplateUpdateDTO;
 import com.visualbuilder.template.entity.Template;
 import com.visualbuilder.template.mapper.TemplateMapper;
 import com.visualbuilder.template.service.TemplateService;
@@ -116,9 +118,8 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
         newPage.setUserId(userId);
         pageMapper.insert(newPage);
 
-        // 递增模板使用次数 + 清除缓存
-        template.setUseCount(template.getUseCount() + 1);
-        this.updateById(template);
+        // 原子递增模板使用次数 + 清除缓存
+        this.baseMapper.incrementUseCount(templateId);
         evictCache();
 
         log.info("应用模板成功: templateId={}, targetProjectId={}, newPageId={}",
@@ -137,12 +138,17 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createTemplate(Template template) {
-        if (template.getStatus() == null) {
-            template.setStatus(StatusConst.Template.ON_SHELF);
-        }
-        if (template.getUseCount() == null) template.setUseCount(0);
-        if (template.getFavoriteCount() == null) template.setFavoriteCount(0);
+    public void createTemplate(TemplateCreateDTO dto) {
+        Template template = new Template();
+        template.setName(dto.getName());
+        template.setCategoryId(dto.getCategoryId());
+        template.setDescription(dto.getDescription());
+        template.setCoverUrl(dto.getCoverUrl());
+        template.setPageSchema(dto.getPageSchema());
+        template.setTags(dto.getTags());
+        template.setStatus(dto.getStatus() != null ? dto.getStatus() : StatusConst.Template.ON_SHELF);
+        template.setUseCount(0);
+        template.setFavoriteCount(0);
         this.save(template);
         evictCache();
         log.info("创建模板: name={}", template.getName());
@@ -150,16 +156,16 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateTemplate(Long templateId, Template updates) {
+    public void updateTemplate(Long templateId, TemplateUpdateDTO dto) {
         Template template = this.getById(templateId);
         if (template == null) throw new BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "模板不存在");
-        if (updates.getName() != null) template.setName(updates.getName());
-        if (updates.getDescription() != null) template.setDescription(updates.getDescription());
-        if (updates.getCoverUrl() != null) template.setCoverUrl(updates.getCoverUrl());
-        if (updates.getPageSchema() != null) template.setPageSchema(updates.getPageSchema());
-        if (updates.getTags() != null) template.setTags(updates.getTags());
-        if (updates.getStatus() != null) template.setStatus(updates.getStatus());
-        if (updates.getCategoryId() != null) template.setCategoryId(updates.getCategoryId());
+        if (dto.getName() != null) template.setName(dto.getName());
+        if (dto.getDescription() != null) template.setDescription(dto.getDescription());
+        if (dto.getCoverUrl() != null) template.setCoverUrl(dto.getCoverUrl());
+        if (dto.getPageSchema() != null) template.setPageSchema(dto.getPageSchema());
+        if (dto.getTags() != null) template.setTags(dto.getTags());
+        if (dto.getStatus() != null) template.setStatus(dto.getStatus());
+        if (dto.getCategoryId() != null) template.setCategoryId(dto.getCategoryId());
         this.updateById(template);
         evictCache();
     }

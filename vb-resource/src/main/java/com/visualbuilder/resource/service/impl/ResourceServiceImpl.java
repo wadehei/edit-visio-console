@@ -340,8 +340,14 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
     @Override
     public PageResult<Resource> listResources(String resourceType, String groupName, int page, int pageSize) {
-        // 构建缓存 key
-        String cacheKey = RESOURCE_CACHE_PREFIX + page + ":" + pageSize
+        // 未登录一律拒绝
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        // 缓存 key 包含 userId，防止跨用户数据泄露
+        String cacheKey = RESOURCE_CACHE_PREFIX + currentUserId
+                + ":" + page + ":" + pageSize
                 + ":" + (resourceType != null ? resourceType : "_")
                 + ":" + (groupName != null ? groupName : "_");
 
@@ -357,10 +363,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
         var wrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Resource>();
 
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null) {
-            wrapper.eq(Resource::getUserId, userId);
-        }
+        wrapper.eq(Resource::getUserId, currentUserId);
         if (resourceType != null && !resourceType.isBlank()) {
             wrapper.eq(Resource::getResourceType, resourceType);
         }
