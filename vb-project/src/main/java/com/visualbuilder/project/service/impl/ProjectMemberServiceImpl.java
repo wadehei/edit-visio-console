@@ -2,6 +2,8 @@ package com.visualbuilder.project.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
+import com.visualbuilder.common.core.constant.ProjectRole;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.utils.SecurityUtils;
@@ -18,9 +20,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -31,32 +36,30 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
     private final ProjectMapper projectMapper;
 
     /** 允许分配的成员权限（owner 只能通过转让所有权获得） */
-    private static final Set<String> ASSIGNABLE_PERMISSIONS = Set.of("view", "edit", "admin");
+    private static final Set<String> ASSIGNABLE_PERMISSIONS =
+            Set.of(ProjectRole.VIEW, ProjectRole.EDIT, ProjectRole.ADMIN);
 
     /** 角色等级：数值越大权限越高 */
     private static final Map<String, Integer> ROLE_LEVELS = Map.of(
-            "view", 1, "edit", 2, "admin", 3, "owner", 4);
+            ProjectRole.VIEW, 1,
+            ProjectRole.EDIT, 2,
+            ProjectRole.ADMIN, 3,
+            ProjectRole.OWNER, 4);
 
     /** 无任何角色 */
     private static final int NO_ROLE = 0;
 
-    /** 成员列表上限 — 未分页接口的硬上限，避免全表返回 */
-    private static final int MAX_MEMBER_LIST_SIZE = 200;
-
     @Override
     public List<ProjectMember> listMembers(Long projectId) {
         // 未登录一律拒绝；仅项目所有者或成员可查看成员列表
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
         if (!isProjectOwnerOrMember(projectId, currentUserId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权查看该项目成员");
         }
         return this.list(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
                 .orderByDesc(ProjectMember::getCreatedTime)
-                .last("LIMIT " + MAX_MEMBER_LIST_SIZE));
+                .last("LIMIT " + LimitsConst.MAX_MEMBER_LIST_SIZE));
     }
 
     @Override
@@ -88,15 +91,12 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
      * 校验当前用户是否为项目所有者；仅项目所有者可管理成员。
      */
     private void assertProjectOwner(Long projectId) {
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
-        Project project = projectMapper.selectById(projectId);
-        if (project == null) {
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
+        String role = baseMapper.selectEffectiveRole(projectId, currentUserId);
+        if (role == null) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
-        if (!currentUserId.equals(project.getUserId())) {
+        if (!ProjectRole.OWNER.equals(role)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "仅项目所有者可管理成员");
         }
     }
@@ -107,29 +107,56 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         if (members == null || members.isEmpty()) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "成员列表不能为空");
         }
-        if (members.size() > 50) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "单次批量添加不能超过50人");
+        if (members.size() > LimitsConst.MAX_BATCH_SIZE) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "单次批量添加不能超过" + LimitsConst.MAX_BATCH_SIZE + "人");
         }
 
         assertProjectOwner(projectId);
 
-        int success = 0;
-        int skipped = 0;
+        // 预加载项目已有成员，避免逐条 count 查询（N+1）
+        Set<Long> existingUserIds = this.list(new LambdaQueryWrapper<ProjectMember>()
+                        .eq(ProjectMember::getProjectId, projectId))
+                .stream()
+                .map(ProjectMember::getUserId)
+                .collect(Collectors.toSet());
 
+        List<ProjectMember> toInsert = new ArrayList<>();
+        Set<Long> seen = new HashSet<>();
+        LocalDateTime now = LocalDateTime.now();
         for (ProjectMemberAddDTO dto : members) {
-            try {
-                insertMember(projectId, dto.getUserId(), dto.getPermission());
-                success++;
-            } catch (Exception e) {
-                skipped++;
-                log.warn("批量添加成员失败: userId={}, error={}", dto.getUserId(), e.getMessage());
+            Long userId = dto.getUserId();
+            // 用户 ID 为空、入参重复、已是成员：一律跳过（不中断整批）
+            if (userId == null || !seen.add(userId) || existingUserIds.contains(userId)) {
+                continue;
             }
+            String permission;
+            try {
+                permission = normalizeAssignablePermission(dto.getPermission());
+            } catch (BusinessException e) {
+                // 权限非法：跳过该条（纯内存校验，不触碰数据库事务）
+                log.warn("批量添加成员跳过: projectId={}, userId={}, reason={}",
+                        projectId, userId, e.getMessage());
+                continue;
+            }
+            ProjectMember member = new ProjectMember();
+            member.setProjectId(projectId);
+            member.setUserId(userId);
+            member.setPermission(permission);
+            member.setCreatedTime(now);
+            toInsert.add(member);
         }
 
+        if (!toInsert.isEmpty()) {
+            baseMapper.batchInsert(toInsert);
+        }
+
+        int success = toInsert.size();
+        log.info("批量添加项目成员: projectId={}, total={}, success={}", projectId, members.size(), success);
         return BatchResultVO.builder()
                 .total(members.size())
                 .success(success)
-                .skipped(skipped)
+                .skipped(members.size() - success)
                 .build();
     }
 
@@ -184,7 +211,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         projectMapper.updateById(project);
 
         // 更新成员角色
-        newOwnerMember.setPermission("owner");
+        newOwnerMember.setPermission(ProjectRole.OWNER);
         this.updateById(newOwnerMember);
 
         // 将原所有者降级为 admin
@@ -193,7 +220,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
                     .eq(ProjectMember::getProjectId, projectId)
                     .eq(ProjectMember::getUserId, oldOwnerId));
             if (oldOwnerMember != null) {
-                oldOwnerMember.setPermission("admin");
+                oldOwnerMember.setPermission(ProjectRole.ADMIN);
                 this.updateById(oldOwnerMember);
             }
         }
@@ -214,11 +241,8 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         if (projectId == null || userId == null) {
             return false;
         }
-        Project project = projectMapper.selectById(projectId);
-        if (project != null && userId.equals(project.getUserId())) {
-            return true;
-        }
-        return isProjectMember(projectId, userId);
+        String role = baseMapper.selectEffectiveRole(projectId, userId);
+        return role != null && !role.isEmpty();
     }
 
     @Override
@@ -247,11 +271,11 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
-        Project project = projectMapper.selectById(projectId);
-        if (project == null) {
+        String role = baseMapper.selectEffectiveRole(projectId, userId);
+        if (role == null) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
-        if (resolveRoleLevel(project, userId) < requiredLevel(minRole)) {
+        if (roleLevel(role) < requiredLevel(minRole)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "项目权限不足，需要 " + requiredLevelName(minRole) + " 及以上权限");
         }
     }
@@ -261,29 +285,26 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         if (projectId == null || userId == null) {
             return false;
         }
-        Project project = projectMapper.selectById(projectId);
-        if (project == null) {
-            return false;
-        }
-        return resolveRoleLevel(project, userId) >= requiredLevel(minRole);
+        return roleLevel(baseMapper.selectEffectiveRole(projectId, userId)) >= requiredLevel(minRole);
     }
 
-    /** 解析用户在项目中的角色等级；项目所有者视为 owner */
-    private int resolveRoleLevel(Project project, Long userId) {
-        if (userId.equals(project.getUserId())) {
-            return ROLE_LEVELS.get("owner");
+    /** 解析角色字符串等级；null/空串（项目不存在或非成员）视为无权限 */
+    private static int roleLevel(String role) {
+        if (role == null || role.isEmpty()) {
+            return NO_ROLE;
         }
-        String permission = getMemberPermission(project.getId(), userId);
-        return permission != null ? ROLE_LEVELS.getOrDefault(permission.toLowerCase(), NO_ROLE) : NO_ROLE;
+        return ROLE_LEVELS.getOrDefault(role.toLowerCase(), NO_ROLE);
     }
 
     /** 解析最低角色要求，默认 view */
     private static int requiredLevel(String minRole) {
-        return ROLE_LEVELS.getOrDefault(minRole != null ? minRole.toLowerCase() : "view", ROLE_LEVELS.get("view"));
+        return ROLE_LEVELS.getOrDefault(
+                minRole != null ? minRole.toLowerCase() : ProjectRole.VIEW,
+                ROLE_LEVELS.get(ProjectRole.VIEW));
     }
 
     private static String requiredLevelName(String minRole) {
-        return minRole != null ? minRole.toLowerCase() : "view";
+        return minRole != null ? minRole.toLowerCase() : ProjectRole.VIEW;
     }
 
     /**
@@ -291,7 +312,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
      */
     private String normalizeAssignablePermission(String permission) {
         if (permission == null || permission.isBlank()) {
-            return "view";
+            return ProjectRole.VIEW;
         }
         String normalized = permission.trim().toLowerCase();
         if (!ASSIGNABLE_PERMISSIONS.contains(normalized)) {

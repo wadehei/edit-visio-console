@@ -5,7 +5,8 @@ server:
 
 spring:
   profiles:
-    active: dev
+    # 默认使用 prod，避免误以 dev（弱口令/调试日志）启动；本地开发请显式指定 SPRING_PROFILES_ACTIVE=dev
+    active: ${SPRING_PROFILES_ACTIVE:prod}
 
   application:
     name: visual-builder-backend

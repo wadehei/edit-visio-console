@@ -8,6 +8,7 @@ import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
+import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.user.dto.AdminUserCreateDTO;
 import com.visualbuilder.user.dto.AdminUserUpdateDTO;
 import com.visualbuilder.user.entity.SysUser;
@@ -43,7 +44,9 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
 
     @Override
     public PageResult<SysUser> listUsers(int page, int pageSize, String keyword, Integer status) {
-        Page<SysUser> pageParam = new Page<>(page, pageSize);
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
+        Page<SysUser> pageParam = new Page<>(pn, ps);
         LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>()
                 .like(StringUtils.hasText(keyword), SysUser::getUsername, keyword)
                 .eq(status != null, SysUser::getStatus, status)
@@ -51,7 +54,7 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
         Page<SysUser> result = this.page(pageParam, wrapper);
         // 清除密码字段，避免泄露
         result.getRecords().forEach(u -> u.setPassword(null));
-        return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+        return PageResult.of(result.getRecords(), result.getTotal(), pn, ps);
     }
 
     @Override

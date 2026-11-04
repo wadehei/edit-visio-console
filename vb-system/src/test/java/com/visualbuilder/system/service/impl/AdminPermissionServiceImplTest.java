@@ -1,8 +1,8 @@
 package com.visualbuilder.system.service.impl;
 
+import com.visualbuilder.common.mapper.SysRolePermissionMapper;
 import com.visualbuilder.system.entity.SysPermission;
 import com.visualbuilder.system.mapper.SysPermissionMapper;
-import com.visualbuilder.system.mapper.SysRolePermissionMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

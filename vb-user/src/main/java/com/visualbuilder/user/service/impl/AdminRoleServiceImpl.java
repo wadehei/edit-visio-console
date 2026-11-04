@@ -5,12 +5,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
+import com.visualbuilder.common.core.entity.SysRolePermission;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
+import com.visualbuilder.common.mapper.SysRolePermissionMapper;
+import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.user.dto.RoleCreateDTO;
 import com.visualbuilder.user.dto.RoleUpdateDTO;
-import com.visualbuilder.user.entity.SysRolePermission;
-import com.visualbuilder.user.mapper.SysRolePermissionMapper;
 import com.visualbuilder.user.entity.SysRole;
 import com.visualbuilder.user.mapper.SysRoleMapper;
 import com.visualbuilder.user.service.AdminRoleService;
@@ -33,12 +34,14 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
 
     @Override
     public PageResult<SysRole> listRoles(int page, int pageSize, String keyword) {
-        Page<SysRole> pageParam = new Page<>(page, pageSize);
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
+        Page<SysRole> pageParam = new Page<>(pn, ps);
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
                 .like(StringUtils.hasText(keyword), SysRole::getRoleName, keyword)
                 .orderByAsc(SysRole::getSortOrder);
         Page<SysRole> result = this.page(pageParam, wrapper);
-        return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+        return PageResult.of(result.getRecords(), result.getTotal(), pn, ps);
     }
 
     @Override

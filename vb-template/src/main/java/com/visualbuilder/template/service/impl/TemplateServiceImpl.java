@@ -2,6 +2,8 @@ package com.visualbuilder.template.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
+import com.visualbuilder.common.core.constant.ProjectRole;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
@@ -42,9 +44,6 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
     private static final String CACHE_KEY_LIST = "template:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
 
-    /** 无分页列表接口的单次最大返回条数，避免全表返回 */
-    private static final int MAX_LIST_SIZE = 500;
-
     @Override
     public List<Template> listTemplates(Long categoryId, String keyword, String tag) {
         // 无过滤条件时使用缓存
@@ -65,7 +64,7 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
                 .like(StringUtils.hasText(tag), Template::getTags, tag)
                 .eq(Template::getStatus, StatusConst.Template.ON_SHELF)
                 .orderByDesc(Template::getUseCount)
-                .last("LIMIT " + MAX_LIST_SIZE);
+                .last("LIMIT " + LimitsConst.MAX_LIST_SIZE);
         List<Template> result = this.list(wrapper);
 
         // 写入缓存
@@ -106,13 +105,10 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
         Template template = this.getById(templateId);
         if (template == null) throw new BusinessException(ErrorCode.TEMPLATE_NOT_FOUND, "模板不存在");
 
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         // 仅目标项目 edit 及以上角色可应用模板（防止向任意项目写入页面）
-        if (!projectMemberService.hasProjectRole(targetProjectId, userId, "edit")) {
+        if (!projectMemberService.hasProjectRole(targetProjectId, userId, ProjectRole.EDIT)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权在该项目中应用模板，需要编辑权限");
         }
 

@@ -99,6 +99,7 @@ class ProjectServiceImplTest {
         when(projectMapper.selectById(1L)).thenReturn(project);
         // 模拟已登录且为项目所有者（userId=1）
         SecurityUtils.setContext(1L, "tester");
+        when(projectMemberService.isProjectOwnerOrMember(1L, 1L)).thenReturn(true);
 
         ProjectVO result = projectService.getProjectDetail(1L);
 
@@ -133,7 +134,7 @@ class ProjectServiceImplTest {
         Project project = createMockProject(1L, "测试项目");
         when(projectMapper.selectById(1L)).thenReturn(project);
         SecurityUtils.setContext(2L, "outsider");
-        when(projectMemberService.isProjectMember(1L, 2L)).thenReturn(false);
+        when(projectMemberService.isProjectOwnerOrMember(1L, 2L)).thenReturn(false);
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> projectService.exportProject(1L));
@@ -146,7 +147,7 @@ class ProjectServiceImplTest {
         Project project = createMockProject(1L, "测试项目");
         when(projectMapper.selectById(1L)).thenReturn(project);
         SecurityUtils.setContext(2L, "outsider");
-        when(projectMemberService.isProjectMember(1L, 2L)).thenReturn(false);
+        when(projectMemberService.isProjectOwnerOrMember(1L, 2L)).thenReturn(false);
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> projectService.copyProject(1L));

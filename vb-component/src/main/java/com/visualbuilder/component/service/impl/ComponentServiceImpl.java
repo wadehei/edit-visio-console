@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
@@ -37,9 +38,6 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
     private static final String CACHE_KEY_ALL = "component:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
 
-    /** 无分页列表接口的单次最大返回条数，避免全表返回 */
-    private static final int MAX_LIST_SIZE = 500;
-
     @Override
     public List<ComponentVO> listComponents(Long categoryId, String keyword) {
         // 无过滤条件时使用缓存
@@ -59,7 +57,7 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
                 .like(StringUtils.hasText(keyword), Component::getName, keyword)
                 .eq(Component::getStatus, StatusConst.Enable.ENABLED)
                 .orderByAsc(Component::getSortOrder)
-                .last("LIMIT " + MAX_LIST_SIZE);
+                .last("LIMIT " + LimitsConst.MAX_LIST_SIZE);
         List<Component> list = this.list(wrapper);
         List<ComponentVO> result = list.stream().map(this::toVO).toList();
 

@@ -5,11 +5,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
+import com.visualbuilder.common.core.constant.ProjectRole;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
+import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.page.dto.PageCreateDTO;
 import com.visualbuilder.page.dto.PageSchemaDTO;
 import com.visualbuilder.page.dto.PageVO;
@@ -27,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,12 +52,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageVO createPage(Long projectId, PageCreateDTO dto) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
         // 仅项目 edit 及以上角色可创建页面（view 只读）
-        if (!projectMemberService.hasProjectRole(projectId, userId, "edit")) {
+        if (!projectMemberService.hasProjectRole(projectId, userId, ProjectRole.EDIT)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权在该项目中创建页面，需要编辑权限");
         }
 
@@ -75,10 +77,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
      * 校验当前用户是否有权访问该页面：页面创建者、项目所有者或项目成员；未登录一律拒绝。
      */
     private void assertPageAccess(Page page) {
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
         if (!currentUserId.equals(page.getUserId())
                 && !projectMemberService.isProjectOwnerOrMember(page.getProjectId(), currentUserId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该页面");
@@ -99,10 +98,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
     @Override
     public PageResult<PageVO> listPages(Long projectId, int page, int pageSize, String keyword) {
         // 未登录一律拒绝
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
         // 权限校验：仅项目所有者或项目成员可查看页面列表（与详情接口保持一致）
         if (!projectMemberService.isProjectOwnerOrMember(projectId, currentUserId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
@@ -115,12 +111,13 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         }
         wrapper.orderByDesc(Page::getUpdatedTime);
 
-        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Page> pageParam =
-                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, pageSize);
-        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Page> result = page(pageParam, wrapper);
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
+        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Page>(pn, ps);
+        var result = page(pageParam, wrapper);
 
         List<PageVO> voList = result.getRecords().stream().map(this::toVO).toList();
-        return PageResult.of(voList, result.getTotal(), page, pageSize);
+        return PageResult.of(voList, result.getTotal(), pn, ps);
     }
 
     @Override
@@ -219,14 +216,12 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (ids == null || ids.isEmpty()) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "ID 列表不能为空");
         }
-        if (ids.size() > 50) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "单次批量删除不能超过50条");
+        if (ids.size() > LimitsConst.MAX_BATCH_SIZE) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "单次批量删除不能超过" + LimitsConst.MAX_BATCH_SIZE + "条");
         }
 
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         // 批量查询，避免 N+1
         List<Page> pages = listByIds(ids);
@@ -235,9 +230,11 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
             pageMap.put(p.getId(), p);
         }
 
+        // 按项目缓存 edit 权限，避免逐条鉴权造成 N+1
+        Map<Long, Boolean> projectEditCache = new HashMap<>();
         int success = 0;
         int skipped = 0;
-        List<Long> toDeleteIds = new java.util.ArrayList<>();
+        List<Long> toDeleteIds = new ArrayList<>();
         for (Long id : ids) {
             Page page = pageMap.get(id);
             if (page == null) {
@@ -245,7 +242,10 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
                 continue;
             }
             // 无写权限（非创建者且项目角色低于 edit）时跳过
-            if (!hasPageWritePermission(page, userId)) {
+            boolean writable = page.getUserId().equals(userId)
+                    || projectEditCache.computeIfAbsent(page.getProjectId(),
+                            pid -> projectMemberService.hasProjectRole(pid, userId, ProjectRole.EDIT));
+            if (!writable) {
                 skipped++;
                 continue;
             }
@@ -257,7 +257,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
             removeByIds(toDeleteIds);
         }
 
-        Map<String, Object> result = new java.util.HashMap<>();
+        Map<String, Object> result = new HashMap<>();
         result.put("total", ids.size());
         result.put("success", success);
         result.put("skipped", skipped);
@@ -266,25 +266,21 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
 
     @Override
     public PageResult<PageVO> listTrash(Long projectId, int page, int pageSize) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
-        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Page>(page, pageSize);
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
+        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Page>(pn, ps);
         var result = baseMapper.selectTrashPage(pageParam, projectId, userId);
 
         var voList = result.getRecords().stream().map(this::toVO).toList();
-        return PageResult.of(voList, result.getTotal(), page, pageSize);
+        return PageResult.of(voList, result.getTotal(), pn, ps);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void restorePage(Long pageId) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         Page page = baseMapper.selectByIdIncludeDeleted(pageId);
         if (page == null) {
@@ -304,10 +300,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void permanentDeletePage(Long pageId) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         Page page = baseMapper.selectByIdIncludeDeleted(pageId);
         if (page == null) {
@@ -357,10 +350,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
      * 校验当前用户是否有页面写权限：页面创建者，或项目 edit 及以上角色（view 只读）。
      */
     private void checkPageWritePermission(Page page) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
         if (!hasPageWritePermission(page, userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面，需要编辑权限");
         }
@@ -376,7 +366,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page.getUserId().equals(userId)) {
             return true;
         }
-        return projectMemberService.hasProjectRole(page.getProjectId(), userId, "edit");
+        return projectMemberService.hasProjectRole(page.getProjectId(), userId, ProjectRole.EDIT);
     }
 
     private PageVO toVO(Page page) {

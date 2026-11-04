@@ -1,11 +1,11 @@
 package com.visualbuilder.user.service.impl;
 
+import com.visualbuilder.common.core.entity.SysRolePermission;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.mapper.SysRolePermissionMapper;
 import com.visualbuilder.user.entity.SysRole;
-import com.visualbuilder.user.entity.SysRolePermission;
 import com.visualbuilder.user.mapper.SysRoleMapper;
-import com.visualbuilder.user.mapper.SysRolePermissionMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

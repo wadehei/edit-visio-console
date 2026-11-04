@@ -1,5 +1,6 @@
 package com.visualbuilder.gateway.config;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.security.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -47,6 +48,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(WHITE_LIST).permitAll()
+                        // 指标端点仅超级管理员可访问，避免内部运行数据泄露
+                        .requestMatchers("/internal/actuator/metrics", "/internal/actuator/metrics/**")
+                        .hasRole(SystemRole.SUPER_ADMIN)
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

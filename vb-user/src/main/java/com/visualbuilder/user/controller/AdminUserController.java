@@ -1,5 +1,6 @@
 package com.visualbuilder.user.controller;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -24,7 +25,7 @@ public class AdminUserController {
     private final AdminUserService adminUserService;
 
     @Operation(summary = "用户列表（分页）")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping
     public R<PageResult<SysUser>> list(
             @RequestParam(defaultValue = "1") int page,
@@ -35,7 +36,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "用户详情")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/{id}")
     public R<SysUser> detail(@PathVariable Long id) {
         SysUser user = adminUserService.getById(id);
@@ -44,7 +45,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "创建用户")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "用户管理", action = "创建用户")
     @PostMapping
     public R<Void> create(@Valid @RequestBody AdminUserCreateDTO dto) {
@@ -53,7 +54,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "更新用户信息")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "用户管理", action = "更新用户")
     @PutMapping("/{id}")
     public R<Void> update(@PathVariable Long id, @Valid @RequestBody AdminUserUpdateDTO dto) {
@@ -62,7 +63,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "删除用户")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "用户管理", action = "删除用户")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
@@ -71,7 +72,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "重置密码")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "用户管理", action = "重置密码")
     @PutMapping("/{id}/reset-password")
     public R<Void> resetPassword(@PathVariable Long id, @Valid @RequestBody ResetPasswordDTO dto) {
@@ -80,7 +81,7 @@ public class AdminUserController {
     }
 
     @Operation(summary = "启用/禁用用户")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "用户管理", action = "更新状态")
     @PutMapping("/{id}/status")
     public R<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {

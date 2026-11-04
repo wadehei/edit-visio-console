@@ -9,6 +9,7 @@ import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
+import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.page.service.PageService;
 import com.visualbuilder.project.service.ProjectMemberService;
 import com.visualbuilder.publish.dto.PublishResultVO;
@@ -45,10 +46,7 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
      * 校验当前用户是否有权访问该项目（所有者或项目成员）；未登录一律拒绝。
      */
     private void checkProjectAccess(Long projectId) {
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
         if (!projectMemberService.isProjectOwnerOrMember(projectId, currentUserId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
         }
@@ -58,7 +56,7 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
     @Transactional(rollbackFor = Exception.class)
     public PublishResultVO publish(Long projectId, Long pageId, String changelog) {
         // 1. 校验页面存在且属于该项目
-        com.visualbuilder.page.entity.Page page = pageService.getById(pageId);
+        var page = pageService.getById(pageId);
         if (page == null || !page.getProjectId().equals(projectId)) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在或不属于当前项目");
         }
@@ -155,13 +153,15 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
         // 未登录一律拒绝；仅项目所有者或成员可查看发布历史
         checkProjectAccess(projectId);
 
-        Page<PublishRecord> pageParam = new Page<>(page, pageSize);
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
+        Page<PublishRecord> pageParam = new Page<>(pn, ps);
         LambdaQueryWrapper<PublishRecord> wrapper = new LambdaQueryWrapper<PublishRecord>()
                 .eq(PublishRecord::getProjectId, projectId)
                 .orderByDesc(PublishRecord::getPublishedAt);
 
         Page<PublishRecord> result = this.page(pageParam, wrapper);
-        return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+        return PageResult.of(result.getRecords(), result.getTotal(), pn, ps);
     }
 
     @Override

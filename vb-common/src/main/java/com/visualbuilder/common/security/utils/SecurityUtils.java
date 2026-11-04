@@ -1,5 +1,7 @@
 package com.visualbuilder.common.security.utils;
 
+import com.visualbuilder.common.core.exception.BusinessException;
+import com.visualbuilder.common.core.exception.ErrorCode;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -43,6 +45,18 @@ public final class SecurityUtils {
             return userId;
         }
         return null;
+    }
+
+    /**
+     * 获取当前用户ID，未登录直接抛出 UNAUTHORIZED 业务异常。
+     * 统一各业务层的「未登录」守卫，避免重复判断。
+     */
+    public static Long requireCurrentUserId() {
+        Long userId = getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        return userId;
     }
 
     /**

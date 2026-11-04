@@ -8,6 +8,7 @@ import com.visualbuilder.common.core.base.BaseServiceImpl;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
+import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.system.dto.HealthCheckVO;
 import com.visualbuilder.system.entity.LoginLog;
 import com.visualbuilder.system.entity.SysConfig;
@@ -82,8 +83,8 @@ public class SystemServiceImpl extends BaseServiceImpl<SysConfigMapper, SysConfi
 
     @Override
     public PageResult<SysLog> getLogs(String module, Integer page, Integer pageSize) {
-        int pn = page == null ? 1 : page;
-        int ps = pageSize == null ? 20 : pageSize;
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
         Page<SysLog> pageParam = new Page<>(pn, ps);
         LambdaQueryWrapper<SysLog> wrapper = new LambdaQueryWrapper<SysLog>()
                 .like(StringUtils.hasText(module), SysLog::getModule, module)
@@ -94,8 +95,8 @@ public class SystemServiceImpl extends BaseServiceImpl<SysConfigMapper, SysConfi
 
     @Override
     public PageResult<LoginLog> getLoginLogs(String username, Integer page, Integer pageSize) {
-        int pn = page == null ? 1 : page;
-        int ps = pageSize == null ? 20 : pageSize;
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
         Page<LoginLog> pageParam = new Page<>(pn, ps);
         LambdaQueryWrapper<LoginLog> wrapper = new LambdaQueryWrapper<LoginLog>()
                 .like(StringUtils.hasText(username), LoginLog::getUsername, username)

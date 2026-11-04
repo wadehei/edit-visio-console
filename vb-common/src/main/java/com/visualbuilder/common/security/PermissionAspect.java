@@ -1,5 +1,6 @@
 package com.visualbuilder.common.security;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.annotation.Logical;
@@ -37,7 +38,7 @@ public class PermissionAspect {
                 userId, Arrays.toString(requiredPermissions), logical, userPermissions);
 
         // 超级管理员拥有所有权限
-        if (SecurityUtils.getCurrentRoles().contains("SUPER_ADMIN")) {
+        if (SecurityUtils.getCurrentRoles().contains(SystemRole.SUPER_ADMIN)) {
             return;
         }
 

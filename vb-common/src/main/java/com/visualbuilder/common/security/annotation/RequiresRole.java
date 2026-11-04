@@ -4,7 +4,7 @@ import java.lang.annotation.*;
 
 /**
  * 角色校验注解
- * 使用示例: @RequiresRole("SUPER_ADMIN")
+ * 使用示例: @RequiresRole(SystemRole.SUPER_ADMIN)
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

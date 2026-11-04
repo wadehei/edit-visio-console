@@ -1,5 +1,6 @@
 package com.visualbuilder.template.controller;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
@@ -49,7 +50,7 @@ public class TemplateController {
         return R.ok(templateService.applyTemplate(id, targetProjectId));
     }
 
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "模板管理", action = "创建模板")
     @Operation(summary = "创建模板")
     @PostMapping
@@ -58,7 +59,7 @@ public class TemplateController {
         return R.ok();
     }
 
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "模板管理", action = "更新模板")
     @Operation(summary = "更新模板")
     @PutMapping("/{id}")
@@ -67,7 +68,7 @@ public class TemplateController {
         return R.ok();
     }
 
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "模板管理", action = "删除模板")
     @Operation(summary = "删除模板")
     @DeleteMapping("/{id}")

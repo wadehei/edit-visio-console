@@ -1,5 +1,6 @@
 package com.visualbuilder.component.controller;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
@@ -37,7 +38,7 @@ public class ComponentController {
         return R.ok(componentService.getComponentDetail(componentId));
     }
 
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "组件管理", action = "创建组件")
     @Operation(summary = "创建组件")
     @PostMapping
@@ -46,7 +47,7 @@ public class ComponentController {
         return R.ok();
     }
 
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "组件管理", action = "更新组件")
     @Operation(summary = "更新组件")
     @PutMapping("/{componentId}")
@@ -55,7 +56,7 @@ public class ComponentController {
         return R.ok();
     }
 
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "组件管理", action = "删除组件")
     @Operation(summary = "删除组件")
     @DeleteMapping("/{componentId}")

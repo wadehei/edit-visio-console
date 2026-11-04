@@ -1,5 +1,6 @@
 package com.visualbuilder.system.controller;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -25,14 +26,14 @@ public class SystemController {
     private final SystemService systemService;
 
     @Operation(summary = "获取系统配置")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/configs")
     public R<List<SysConfig>> configs() {
         return R.ok(systemService.getConfigs());
     }
 
     @Operation(summary = "更新系统配置")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "系统管理", action = "更新系统配置")
     @PutMapping("/configs/{configKey}")
     public R<Void> updateConfig(
@@ -43,7 +44,7 @@ public class SystemController {
     }
 
     @Operation(summary = "操作日志（分页）")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/logs")
     public R<PageResult<SysLog>> logs(
             @RequestParam(required = false) String module,
@@ -53,7 +54,7 @@ public class SystemController {
     }
 
     @Operation(summary = "登录日志（分页）")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/login-logs")
     public R<PageResult<LoginLog>> loginLogs(
             @RequestParam(required = false) String username,

@@ -1,5 +1,6 @@
 package com.visualbuilder.system.controller;
 
+import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
@@ -24,21 +25,21 @@ public class AdminPermissionController {
     private final AdminPermissionService adminPermissionService;
 
     @Operation(summary = "权限树")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/tree")
     public R<List<SysPermission>> tree() {
         return R.ok(adminPermissionService.getPermissionTree());
     }
 
     @Operation(summary = "权限详情")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/{id}")
     public R<SysPermission> detail(@PathVariable Long id) {
         return R.ok(adminPermissionService.getById(id));
     }
 
     @Operation(summary = "创建权限")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "权限管理", action = "创建权限")
     @PostMapping
     public R<Void> create(@Valid @RequestBody PermissionCreateDTO dto) {
@@ -47,7 +48,7 @@ public class AdminPermissionController {
     }
 
     @Operation(summary = "更新权限")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "权限管理", action = "更新权限")
     @PutMapping("/{id}")
     public R<Void> update(@PathVariable Long id, @Valid @RequestBody PermissionUpdateDTO dto) {
@@ -56,7 +57,7 @@ public class AdminPermissionController {
     }
 
     @Operation(summary = "删除权限")
-    @RequiresRole("SUPER_ADMIN")
+    @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "权限管理", action = "删除权限")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {

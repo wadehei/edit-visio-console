@@ -1,13 +1,17 @@
 package com.visualbuilder.resource.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.storage.StorageService;
+import com.visualbuilder.common.util.PageUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.visualbuilder.resource.dto.UploadResultVO;
 import com.visualbuilder.resource.entity.Resource;
 import com.visualbuilder.resource.mapper.ResourceMapper;
 import com.visualbuilder.resource.service.ResourceService;
@@ -26,6 +30,7 @@ import java.io.InputStream;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,9 +50,6 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
     private static final String RESOURCE_CACHE_PREFIX = "resource:list:";
     private static final Duration RESOURCE_CACHE_TTL = Duration.ofMinutes(5);
-
-    /** 列表接口单页最大条数 — 限制缓存 key 基数与响应体积 */
-    private static final int MAX_LIST_PAGE_SIZE = 100;
 
     @Value("${business.resource.allowed-image-types:jpg,jpeg,png,gif,webp,svg}")
     private String allowedImageTypes;
@@ -79,11 +81,8 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public com.visualbuilder.resource.dto.UploadResultVO upload(MultipartFile file, String folderId) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+    public UploadResultVO upload(MultipartFile file, String folderId) {
+        Long userId = SecurityUtils.requireCurrentUserId();
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.FILE_EMPTY, "文件不能为空");
         }
@@ -131,7 +130,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         // 列表缓存失效，避免新上传资源在缓存中不可见
         evictResourceListCache(userId);
 
-        return com.visualbuilder.resource.dto.UploadResultVO.builder()
+        return UploadResultVO.builder()
                 .id(resource.getId())
                 .url(url)
                 .fileName(originalFilename)
@@ -142,10 +141,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteResource(Long resourceId) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         Resource resource = this.getById(resourceId);
         if (resource == null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "资源不存在");
@@ -167,25 +163,22 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         if (ids == null || ids.isEmpty()) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "ID 列表不能为空");
         }
-        if (ids.size() > 100) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "单次批量删除不能超过100条");
+        if (ids.size() > LimitsConst.MAX_BATCH_SIZE) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "单次批量删除不能超过" + LimitsConst.MAX_BATCH_SIZE + "条");
         }
 
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         // 批量查询，避免 N+1
         List<Resource> resources = listByIds(ids);
-        Map<Long, Resource> resourceMap = new java.util.LinkedHashMap<>();
+        Map<Long, Resource> resourceMap = new LinkedHashMap<>();
         for (Resource r : resources) {
             resourceMap.put(r.getId(), r);
         }
 
         int success = 0;
         int skipped = 0;
-        List<Long> toDeleteIds = new java.util.ArrayList<>();
+        List<Long> toDeleteIds = new ArrayList<>();
 
         for (Long id : ids) {
             Resource resource = resourceMap.get(id);
@@ -217,23 +210,19 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
     @Override
     public PageResult<Resource> listTrash(int page, int pageSize) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
-        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Resource>(page, pageSize);
+        int pn = PageUtils.normalizePage(page);
+        int ps = PageUtils.normalizePageSize(pageSize);
+        var pageParam = new Page<Resource>(pn, ps);
         var result = baseMapper.selectTrashPage(pageParam, userId);
-        return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+        return PageResult.of(result.getRecords(), result.getTotal(), pn, ps);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void restoreResource(Long resourceId) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         Resource resource = baseMapper.selectByIdIncludeDeleted(resourceId);
         if (resource == null) {
@@ -255,10 +244,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void permanentDeleteResource(Long resourceId) {
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long userId = SecurityUtils.requireCurrentUserId();
 
         Resource resource = baseMapper.selectByIdIncludeDeleted(resourceId);
         if (resource == null) {
@@ -364,13 +350,10 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     @Override
     public PageResult<Resource> listResources(String resourceType, String groupName, int page, int pageSize) {
         // 未登录一律拒绝
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
         // 归一化分页参数，限制 pageSize 取值范围以避免缓存 key 基数膨胀
         int safePage = Math.max(page, 1);
-        int safePageSize = Math.min(Math.max(pageSize, 1), MAX_LIST_PAGE_SIZE);
+        int safePageSize = Math.min(Math.max(pageSize, 1), LimitsConst.MAX_PAGE_SIZE);
 
         // 缓存 key 包含 userId，防止跨用户数据泄露
         String cacheKey = RESOURCE_CACHE_PREFIX + currentUserId
@@ -399,7 +382,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         }
         wrapper.orderByDesc(Resource::getCreatedTime);
 
-        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Resource>(safePage, safePageSize);
+        var pageParam = new Page<Resource>(safePage, safePageSize);
         var result = this.page(pageParam, wrapper);
 
         PageResult<Resource> pageResult = PageResult.of(result.getRecords(), result.getTotal(), safePage, safePageSize);
