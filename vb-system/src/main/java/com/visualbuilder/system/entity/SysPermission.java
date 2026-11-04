@@ -1,6 +1,7 @@
 package com.visualbuilder.system.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -8,6 +9,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 系统权限/菜单实体。
@@ -38,4 +40,8 @@ public class SysPermission implements Serializable {
 
     @TableLogic
     private Integer deleted;
+
+    /** 子权限节点（树形结构返回时填充，非数据库字段） */
+    @TableField(exist = false)
+    private List<SysPermission> children;
 }

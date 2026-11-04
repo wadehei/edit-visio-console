@@ -139,6 +139,9 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         }
 
         Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
 
         // 批量查询，避免 N+1
         List<Project> projects = listByIds(ids);
@@ -156,7 +159,8 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
                 skipped++;
                 continue;
             }
-            if (userId != null && !project.getUserId().equals(userId)) {
+            // 仅允许删除自己拥有的项目
+            if (!project.getUserId().equals(userId)) {
                 skipped++;
                 continue;
             }

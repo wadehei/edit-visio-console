@@ -37,6 +37,9 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
     private static final String CACHE_KEY_ALL = "component:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
 
+    /** 无分页列表接口的单次最大返回条数，避免全表返回 */
+    private static final int MAX_LIST_SIZE = 500;
+
     @Override
     public List<ComponentVO> listComponents(Long categoryId, String keyword) {
         // 无过滤条件时使用缓存
@@ -55,7 +58,8 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
                 .eq(categoryId != null, Component::getCategoryId, categoryId)
                 .like(StringUtils.hasText(keyword), Component::getName, keyword)
                 .eq(Component::getStatus, StatusConst.Enable.ENABLED)
-                .orderByAsc(Component::getSortOrder);
+                .orderByAsc(Component::getSortOrder)
+                .last("LIMIT " + MAX_LIST_SIZE);
         List<Component> list = this.list(wrapper);
         List<ComponentVO> result = list.stream().map(this::toVO).toList();
 

@@ -14,6 +14,8 @@ import com.visualbuilder.resource.service.ResourceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +45,9 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
     private static final String RESOURCE_CACHE_PREFIX = "resource:list:";
     private static final Duration RESOURCE_CACHE_TTL = Duration.ofMinutes(5);
+
+    /** 列表接口单页最大条数 — 限制缓存 key 基数与响应体积 */
+    private static final int MAX_LIST_PAGE_SIZE = 100;
 
     @Value("${business.resource.allowed-image-types:jpg,jpeg,png,gif,webp,svg}")
     private String allowedImageTypes;
@@ -75,6 +80,10 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     @Override
     @Transactional(rollbackFor = Exception.class)
     public com.visualbuilder.resource.dto.UploadResultVO upload(MultipartFile file, String folderId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.FILE_EMPTY, "文件不能为空");
         }
@@ -108,8 +117,6 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
             throw new BusinessException(ErrorCode.STORAGE_ERROR, "文件上传失败");
         }
 
-        Long userId = SecurityUtils.getCurrentUserId();
-
         Resource resource = new Resource();
         resource.setUserId(userId);
         resource.setResourceType(resourceType);
@@ -120,6 +127,9 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         resource.setMimeType(contentType);
         resource.setGroupName(folderId);
         this.save(resource);
+
+        // 列表缓存失效，避免新上传资源在缓存中不可见
+        evictResourceListCache(userId);
 
         return com.visualbuilder.resource.dto.UploadResultVO.builder()
                 .id(resource.getId())
@@ -132,17 +142,23 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteResource(Long resourceId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+
         Resource resource = this.getById(resourceId);
         if (resource == null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "资源不存在");
 
         // 校验所有权
-        Long userId = SecurityUtils.getCurrentUserId();
-        if (userId != null && !resource.getUserId().equals(userId)) {
+        if (!resource.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权删除他人资源");
         }
 
         // 软删除（移入回收站），存储文件保留
         this.removeById(resourceId);
+        // 列表缓存失效
+        evictResourceListCache(userId);
     }
 
     @Override
@@ -156,6 +172,9 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         }
 
         Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
 
         // 批量查询，避免 N+1
         List<Resource> resources = listByIds(ids);
@@ -174,7 +193,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
                 skipped++;
                 continue;
             }
-            if (userId != null && !resource.getUserId().equals(userId)) {
+            if (!resource.getUserId().equals(userId)) {
                 skipped++;
                 continue;
             }
@@ -185,6 +204,8 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         // 批量软删除（移入回收站），存储文件保留
         if (!toDeleteIds.isEmpty()) {
             removeByIds(toDeleteIds);
+            // 列表缓存失效
+            evictResourceListCache(userId);
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -226,6 +247,8 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         if (rows == 0) {
             throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "资源不存在或未被删除");
         }
+        // 资源回到列表，缓存失效
+        evictResourceListCache(userId);
         log.info("恢复资源: resourceId={}", resourceId);
     }
 
@@ -345,9 +368,13 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         if (currentUserId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
+        // 归一化分页参数，限制 pageSize 取值范围以避免缓存 key 基数膨胀
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), MAX_LIST_PAGE_SIZE);
+
         // 缓存 key 包含 userId，防止跨用户数据泄露
         String cacheKey = RESOURCE_CACHE_PREFIX + currentUserId
-                + ":" + page + ":" + pageSize
+                + ":" + safePage + ":" + safePageSize
                 + ":" + (resourceType != null ? resourceType : "_")
                 + ":" + (groupName != null ? groupName : "_");
 
@@ -372,10 +399,10 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         }
         wrapper.orderByDesc(Resource::getCreatedTime);
 
-        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Resource>(page, pageSize);
+        var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Resource>(safePage, safePageSize);
         var result = this.page(pageParam, wrapper);
 
-        PageResult<Resource> pageResult = PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+        PageResult<Resource> pageResult = PageResult.of(result.getRecords(), result.getTotal(), safePage, safePageSize);
 
         // 写入缓存
         try {
@@ -386,5 +413,28 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         }
 
         return pageResult;
+    }
+
+    /**
+     * 按前缀清理指定用户的资源列表缓存（SCAN 非阻塞遍历，避免 KEYS 阻塞 Redis）。
+     * 写操作（上传/删除/批量删除/恢复）后调用，保证列表数据一致性。
+     */
+    private void evictResourceListCache(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        String pattern = RESOURCE_CACHE_PREFIX + userId + ":*";
+        try {
+            Set<String> keys = new java.util.HashSet<>();
+            try (Cursor<String> cursor = redisTemplate.scan(
+                    ScanOptions.scanOptions().match(pattern).count(200).build())) {
+                cursor.forEachRemaining(keys::add);
+            }
+            if (!keys.isEmpty()) {
+                redisTemplate.delete(keys);
+            }
+        } catch (Exception e) {
+            log.warn("清理资源列表缓存失败: userId={}, error={}", userId, e.getMessage());
+        }
     }
 }

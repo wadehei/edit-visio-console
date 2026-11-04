@@ -2,8 +2,10 @@ package com.visualbuilder.resource.service;
 
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.storage.StorageService;
 import com.visualbuilder.resource.service.impl.ResourceServiceImpl;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,23 @@ class ResourceServiceImplTest {
         ReflectionTestUtils.setField(resourceService, "allowedAudioTypes", "mp3,wav");
         ReflectionTestUtils.setField(resourceService, "maxImageSize", 10_485_760L);
         ReflectionTestUtils.setField(resourceService, "maxVideoSize", 104_857_600L);
+        SecurityUtils.setContext(1L, "tester");
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityUtils.clearContext();
+    }
+
+    @Test
+    @DisplayName("未登录上传抛出 UNAUTHORIZED")
+    void upload_unauthenticated() {
+        SecurityUtils.clearContext();
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "a.jpg", "image/jpeg", new byte[10]);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> resourceService.upload(file, null));
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
     @Test

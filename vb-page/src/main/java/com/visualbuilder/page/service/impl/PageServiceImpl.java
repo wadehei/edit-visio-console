@@ -51,9 +51,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
-        // 仅项目所有者或成员可向该项目创建页面
-        if (!projectMemberService.isProjectOwnerOrMember(projectId, userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权在该项目中创建页面");
+        // 仅项目 edit 及以上角色可创建页面（view 只读）
+        if (!projectMemberService.hasProjectRole(projectId, userId, "edit")) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权在该项目中创建页面，需要编辑权限");
         }
 
         Page page = new Page();
@@ -130,7 +130,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
-        checkPageOwner(page);
+        checkPageWritePermission(page);
         if (StringUtils.hasText(dto.getTitle())) page.setName(dto.getTitle());
         if (dto.getPath() != null) page.setPagePath(dto.getPath());
         if (dto.getIsHome() != null) page.setIsHome(dto.getIsHome() ? StatusConst.YesNo.YES : StatusConst.YesNo.NO);
@@ -145,7 +145,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
-        checkPageOwner(page);
+        checkPageWritePermission(page);
 
         try {
             String schemaJson = objectMapper.writeValueAsString(dto.getSchema());
@@ -173,7 +173,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
-        checkPageOwner(page);
+        checkPageWritePermission(page);
         removeById(pageId);
     }
 
@@ -199,7 +199,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
-        checkPageOwner(page);
+        checkPageWritePermission(page);
 
         PageVersion version = pageVersionMapper.selectById(versionId);
         if (version == null || !version.getPageId().equals(pageId)) {
@@ -224,6 +224,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         }
 
         Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
 
         // 批量查询，避免 N+1
         List<Page> pages = listByIds(ids);
@@ -241,7 +244,8 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
                 skipped++;
                 continue;
             }
-            if (userId != null && !page.getUserId().equals(userId)) {
+            // 无写权限（非创建者且项目角色低于 edit）时跳过
+            if (!hasPageWritePermission(page, userId)) {
                 skipped++;
                 continue;
             }
@@ -286,8 +290,8 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
-        if (!page.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面");
+        if (!hasPageWritePermission(page, userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面，需要编辑权限");
         }
 
         int rows = baseMapper.restoreById(pageId);
@@ -309,8 +313,8 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
         }
-        if (!page.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面");
+        if (!hasPageWritePermission(page, userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面，需要编辑权限");
         }
 
         int rows = baseMapper.permanentDeleteById(pageId);
@@ -350,16 +354,29 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
     }
 
     /**
-     * 校验当前用户是否为页面所有者
+     * 校验当前用户是否有页面写权限：页面创建者，或项目 edit 及以上角色（view 只读）。
      */
-    private void checkPageOwner(Page page) {
+    private void checkPageWritePermission(Page page) {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
-        if (!page.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面");
+        if (!hasPageWritePermission(page, userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此页面，需要编辑权限");
         }
+    }
+
+    /**
+     * 判断用户是否拥有页面写权限（不抛异常，供批量操作逐条跳过）。
+     */
+    private boolean hasPageWritePermission(Page page, Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        if (page.getUserId().equals(userId)) {
+            return true;
+        }
+        return projectMemberService.hasProjectRole(page.getProjectId(), userId, "edit");
     }
 
     private PageVO toVO(Page page) {
@@ -372,7 +389,7 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
                 schema = objectMapper.readValue(page.getSchemaContent(),
                         new TypeReference<Map<String, Object>>() {});
                 schemaSize = page.getSchemaContent().length();
-                if (schema.containsKey("children")) {
+                if (schema != null && schema.containsKey("children")) {
                     Object children = schema.get("children");
                     if (children instanceof List<?> list) {
                         componentCount = list.size();

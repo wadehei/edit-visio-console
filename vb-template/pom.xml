@@ -23,5 +23,9 @@
             <groupId>com.visualbuilder</groupId>
             <artifactId>vb-page</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.visualbuilder</groupId>
+            <artifactId>vb-project</artifactId>
+        </dependency>
     </dependencies>
 </project>

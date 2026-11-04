@@ -86,8 +86,10 @@ public class AdminPermissionServiceImpl extends BaseServiceImpl<SysPermissionMap
 
     private List<SysPermission> buildChildren(Map<Long, List<SysPermission>> groupByParent, Long parentId) {
         List<SysPermission> children = groupByParent.getOrDefault(parentId, new ArrayList<>());
-        // 注意：SysPermission 没有 children 字段，树结构通过排序 parentId 实现
-        // 前端可根据 parentId 自行构建树
+        // 递归填充子节点，构建完整树形结构
+        for (SysPermission child : children) {
+            child.setChildren(buildChildren(groupByParent, child.getId()));
+        }
         return children;
     }
 }

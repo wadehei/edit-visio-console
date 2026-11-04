@@ -9,6 +9,7 @@ import com.visualbuilder.project.service.ProjectMemberService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -51,7 +52,10 @@ public class ProjectMemberController {
     @PutMapping("/{userId}")
     public R<Void> updatePermission(@PathVariable Long projectId,
                                     @PathVariable Long userId,
-                                    @RequestParam String permission) {
+                                    @RequestParam
+                                    @Pattern(regexp = "(?i)view|edit|admin",
+                                            message = "权限取值非法，仅允许 view/edit/admin")
+                                    String permission) {
         projectMemberService.updatePermission(projectId, userId, permission);
         return R.ok();
     }

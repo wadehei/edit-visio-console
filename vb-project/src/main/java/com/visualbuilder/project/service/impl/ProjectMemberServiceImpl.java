@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -27,6 +29,19 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         implements ProjectMemberService {
 
     private final ProjectMapper projectMapper;
+
+    /** 允许分配的成员权限（owner 只能通过转让所有权获得） */
+    private static final Set<String> ASSIGNABLE_PERMISSIONS = Set.of("view", "edit", "admin");
+
+    /** 角色等级：数值越大权限越高 */
+    private static final Map<String, Integer> ROLE_LEVELS = Map.of(
+            "view", 1, "edit", 2, "admin", 3, "owner", 4);
+
+    /** 无任何角色 */
+    private static final int NO_ROLE = 0;
+
+    /** 成员列表上限 — 未分页接口的硬上限，避免全表返回 */
+    private static final int MAX_MEMBER_LIST_SIZE = 200;
 
     @Override
     public List<ProjectMember> listMembers(Long projectId) {
@@ -40,7 +55,8 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         }
         return this.list(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
-                .orderByDesc(ProjectMember::getCreatedTime));
+                .orderByDesc(ProjectMember::getCreatedTime)
+                .last("LIMIT " + MAX_MEMBER_LIST_SIZE));
     }
 
     @Override
@@ -62,7 +78,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         ProjectMember member = new ProjectMember();
         member.setProjectId(projectId);
         member.setUserId(userId);
-        member.setPermission(permission != null ? permission : "view");
+        member.setPermission(normalizeAssignablePermission(permission));
         member.setCreatedTime(LocalDateTime.now());
         this.save(member);
         log.info("添加项目成员: projectId={}, userId={}, permission={}", projectId, userId, member.getPermission());
@@ -127,7 +143,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         if (member == null) {
             throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "成员不存在");
         }
-        member.setPermission(permission);
+        member.setPermission(normalizeAssignablePermission(permission));
         this.updateById(member);
         log.info("更新成员权限: projectId={}, userId={}, permission={}", projectId, userId, permission);
     }
@@ -211,5 +227,63 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
                 .eq(ProjectMember::getProjectId, projectId)
                 .eq(ProjectMember::getUserId, userId));
         return member != null ? member.getPermission() : null;
+    }
+
+    @Override
+    public void assertProjectRole(Long projectId, Long userId, String minRole) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
+        }
+        if (resolveRoleLevel(project, userId) < requiredLevel(minRole)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "项目权限不足，需要 " + requiredLevelName(minRole) + " 及以上权限");
+        }
+    }
+
+    @Override
+    public boolean hasProjectRole(Long projectId, Long userId, String minRole) {
+        if (projectId == null || userId == null) {
+            return false;
+        }
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            return false;
+        }
+        return resolveRoleLevel(project, userId) >= requiredLevel(minRole);
+    }
+
+    /** 解析用户在项目中的角色等级；项目所有者视为 owner */
+    private int resolveRoleLevel(Project project, Long userId) {
+        if (userId.equals(project.getUserId())) {
+            return ROLE_LEVELS.get("owner");
+        }
+        String permission = getMemberPermission(project.getId(), userId);
+        return permission != null ? ROLE_LEVELS.getOrDefault(permission.toLowerCase(), NO_ROLE) : NO_ROLE;
+    }
+
+    /** 解析最低角色要求，默认 view */
+    private static int requiredLevel(String minRole) {
+        return ROLE_LEVELS.getOrDefault(minRole != null ? minRole.toLowerCase() : "view", ROLE_LEVELS.get("view"));
+    }
+
+    private static String requiredLevelName(String minRole) {
+        return minRole != null ? minRole.toLowerCase() : "view";
+    }
+
+    /**
+     * 校验并规范化待分配的成员权限：为空默认 view；仅允许 view/edit/admin。
+     */
+    private String normalizeAssignablePermission(String permission) {
+        if (permission == null || permission.isBlank()) {
+            return "view";
+        }
+        String normalized = permission.trim().toLowerCase();
+        if (!ASSIGNABLE_PERMISSIONS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "权限取值非法，仅允许 view/edit/admin");
+        }
+        return normalized;
     }
 }

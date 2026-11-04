@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -94,12 +95,15 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
 
         // 批量插入新权限关联
         if (permissionIds != null && !permissionIds.isEmpty()) {
-            for (Long permId : permissionIds) {
-                SysRolePermission rp = new SysRolePermission();
-                rp.setRoleId(roleId);
-                rp.setPermissionId(permId);
-                rolePermissionMapper.insert(rp);
-            }
+            List<SysRolePermission> relations = permissionIds.stream()
+                    .map(permId -> {
+                        SysRolePermission rp = new SysRolePermission();
+                        rp.setRoleId(roleId);
+                        rp.setPermissionId(permId);
+                        return rp;
+                    })
+                    .collect(Collectors.toList());
+            rolePermissionMapper.batchInsert(relations);
         }
         log.info("分配角色权限: roleId={}, permissionCount={}", roleId,
                 permissionIds != null ? permissionIds.size() : 0);

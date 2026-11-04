@@ -8,6 +8,7 @@ import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.mapper.PageMapper;
+import com.visualbuilder.project.service.ProjectMemberService;
 import com.visualbuilder.template.dto.TemplateApplyVO;
 import com.visualbuilder.template.dto.TemplateCreateDTO;
 import com.visualbuilder.template.dto.TemplateDetailVO;
@@ -36,9 +37,13 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
     private final PageMapper pageMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final ProjectMemberService projectMemberService;
 
     private static final String CACHE_KEY_LIST = "template:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
+
+    /** 无分页列表接口的单次最大返回条数，避免全表返回 */
+    private static final int MAX_LIST_SIZE = 500;
 
     @Override
     public List<Template> listTemplates(Long categoryId, String keyword, String tag) {
@@ -59,7 +64,8 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
                 .like(StringUtils.hasText(keyword), Template::getName, keyword)
                 .like(StringUtils.hasText(tag), Template::getTags, tag)
                 .eq(Template::getStatus, StatusConst.Template.ON_SHELF)
-                .orderByDesc(Template::getUseCount);
+                .orderByDesc(Template::getUseCount)
+                .last("LIMIT " + MAX_LIST_SIZE);
         List<Template> result = this.list(wrapper);
 
         // 写入缓存
@@ -103,6 +109,11 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        // 仅目标项目 edit 及以上角色可应用模板（防止向任意项目写入页面）
+        if (!projectMemberService.hasProjectRole(targetProjectId, userId, "edit")) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权在该项目中应用模板，需要编辑权限");
         }
 
         // 在目标项目中创建新页面，复制模板的 pageSchema

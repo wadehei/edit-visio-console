@@ -142,10 +142,24 @@ class PageServiceImplTest {
     @DisplayName("非项目成员创建页面抛出 FORBIDDEN")
     void createPage_notProjectMember() {
         SecurityUtils.setContext(2L, "outsider");
-        when(projectMemberService.isProjectOwnerOrMember(100L, 2L)).thenReturn(false);
+        when(projectMemberService.hasProjectRole(100L, 2L, "edit")).thenReturn(false);
 
         PageCreateDTO dto = new PageCreateDTO();
         dto.setTitle("越权页面");
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.createPage(100L, dto));
+        assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("view 只读角色创建页面抛出 FORBIDDEN")
+    void createPage_viewOnlyForbidden() {
+        SecurityUtils.setContext(2L, "viewer");
+        when(projectMemberService.hasProjectRole(100L, 2L, "edit")).thenReturn(false);
+
+        PageCreateDTO dto = new PageCreateDTO();
+        dto.setTitle("只读用户页面");
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> pageService.createPage(100L, dto));
@@ -174,6 +188,37 @@ class PageServiceImplTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> pageService.getVersionList(1L));
         assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("保存 Schema - 非创建者且项目角色不足 edit 抛出 FORBIDDEN")
+    void saveSchema_viewOnlyForbidden() {
+        Page page = createMockPage(1L, 100L, "测试页面");
+        when(pageMapper.selectById(1L)).thenReturn(page);
+        // 当前用户 2 非页面创建者（创建者为 1），且项目角色未达 edit
+        SecurityUtils.setContext(2L, "viewer");
+        when(projectMemberService.hasProjectRole(100L, 2L, "edit")).thenReturn(false);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.saveSchema(1L, new com.visualbuilder.page.dto.PageSchemaDTO()));
+        assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("保存 Schema - 项目成员具备 edit 权限时允许")
+    void saveSchema_editMemberAllowed() {
+        Page page = createMockPage(1L, 100L, "测试页面");
+        when(pageMapper.selectById(1L)).thenReturn(page);
+        SecurityUtils.setContext(2L, "editor");
+        when(projectMemberService.hasProjectRole(100L, 2L, "edit")).thenReturn(true);
+
+        com.visualbuilder.page.dto.PageSchemaDTO dto = new com.visualbuilder.page.dto.PageSchemaDTO();
+        dto.setSchema(Map.of("children", List.of()));
+
+        PageVO result = pageService.saveSchema(1L, dto);
+
+        assertNotNull(result);
+        verify(pageMapper).updateById(any(Page.class));
     }
 
     private Page createMockPage(Long pageId, Long projectId, String name) {
