@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.utils.SecurityUtils;
+import com.visualbuilder.page.dto.PageCreateDTO;
 import com.visualbuilder.page.dto.PageVO;
 import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.mapper.PageMapper;
@@ -135,6 +136,44 @@ class PageServiceImplTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> pageService.deletePage(999L));
         assertEquals(ErrorCode.PAGE_NOT_FOUND, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("非项目成员创建页面抛出 FORBIDDEN")
+    void createPage_notProjectMember() {
+        SecurityUtils.setContext(2L, "outsider");
+        when(projectMemberService.isProjectOwnerOrMember(100L, 2L)).thenReturn(false);
+
+        PageCreateDTO dto = new PageCreateDTO();
+        dto.setTitle("越权页面");
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.createPage(100L, dto));
+        assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("未登录创建页面抛出 UNAUTHORIZED")
+    void createPage_unauthenticated() {
+        PageCreateDTO dto = new PageCreateDTO();
+        dto.setTitle("未登录页面");
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.createPage(100L, dto));
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("非项目成员查询页面版本列表抛出 FORBIDDEN")
+    void getVersionList_forbidden() {
+        Page page = createMockPage(1L, 100L, "测试页面");
+        when(pageMapper.selectById(1L)).thenReturn(page);
+        SecurityUtils.setContext(2L, "outsider");
+        when(projectMemberService.isProjectOwnerOrMember(100L, 2L)).thenReturn(false);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.getVersionList(1L));
+        assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
     }
 
     private Page createMockPage(Long pageId, Long projectId, String name) {

@@ -23,6 +23,11 @@
             <groupId>com.visualbuilder</groupId>
             <artifactId>vb-page</artifactId>
         </dependency>
+        <!-- 直接使用 ProjectMemberService 做项目级权限校验 -->
+        <dependency>
+            <groupId>com.visualbuilder</groupId>
+            <artifactId>vb-project</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.visualbuilder</groupId>
             <artifactId>vb-resource</artifactId>

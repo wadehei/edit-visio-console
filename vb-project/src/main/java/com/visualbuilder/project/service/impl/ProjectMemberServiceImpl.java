@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.project.dto.BatchResultVO;
 import com.visualbuilder.project.dto.ProjectMemberAddDTO;
 import com.visualbuilder.project.entity.Project;
@@ -29,6 +30,14 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
 
     @Override
     public List<ProjectMember> listMembers(Long projectId) {
+        // 未登录一律拒绝；仅项目所有者或成员可查看成员列表
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        if (!isProjectOwnerOrMember(projectId, currentUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权查看该项目成员");
+        }
         return this.list(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
                 .orderByDesc(ProjectMember::getCreatedTime));
@@ -37,6 +46,11 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void addMember(Long projectId, Long userId, String permission) {
+        assertProjectOwner(projectId);
+        insertMember(projectId, userId, permission);
+    }
+
+    private void insertMember(Long projectId, Long userId, String permission) {
         // 检查是否已是成员
         long count = this.count(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
@@ -54,6 +68,23 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
         log.info("添加项目成员: projectId={}, userId={}, permission={}", projectId, userId, member.getPermission());
     }
 
+    /**
+     * 校验当前用户是否为项目所有者；仅项目所有者可管理成员。
+     */
+    private void assertProjectOwner(Long projectId) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
+        }
+        if (!currentUserId.equals(project.getUserId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "仅项目所有者可管理成员");
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BatchResultVO batchAddMembers(Long projectId, List<ProjectMemberAddDTO> members) {
@@ -64,12 +95,14 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
             throw new BusinessException(ErrorCode.PARAM_ERROR, "单次批量添加不能超过50人");
         }
 
+        assertProjectOwner(projectId);
+
         int success = 0;
         int skipped = 0;
 
         for (ProjectMemberAddDTO dto : members) {
             try {
-                addMember(projectId, dto.getUserId(), dto.getPermission());
+                insertMember(projectId, dto.getUserId(), dto.getPermission());
                 success++;
             } catch (Exception e) {
                 skipped++;
@@ -87,6 +120,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePermission(Long projectId, Long userId, String permission) {
+        assertProjectOwner(projectId);
         ProjectMember member = this.getOne(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
                 .eq(ProjectMember::getUserId, userId));
@@ -101,6 +135,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void removeMember(Long projectId, Long userId) {
+        assertProjectOwner(projectId);
         int rows = this.baseMapper.delete(new LambdaQueryWrapper<ProjectMember>()
                 .eq(ProjectMember::getProjectId, projectId)
                 .eq(ProjectMember::getUserId, userId));
@@ -113,6 +148,7 @@ public class ProjectMemberServiceImpl extends BaseServiceImpl<ProjectMemberMappe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void transferOwnership(Long projectId, Long newOwnerId) {
+        assertProjectOwner(projectId);
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");

@@ -126,6 +126,32 @@ class ProjectServiceImplTest {
         assertEquals(ErrorCode.PROJECT_NOT_FOUND, ex.getCode());
     }
 
+    @Test
+    @DisplayName("非项目成员导出项目抛出 FORBIDDEN")
+    void exportProject_forbidden() {
+        Project project = createMockProject(1L, "测试项目");
+        when(projectMapper.selectById(1L)).thenReturn(project);
+        SecurityUtils.setContext(2L, "outsider");
+        when(projectMemberService.isProjectMember(1L, 2L)).thenReturn(false);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> projectService.exportProject(1L));
+        assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("非项目成员复制项目抛出 FORBIDDEN")
+    void copyProject_forbidden() {
+        Project project = createMockProject(1L, "测试项目");
+        when(projectMapper.selectById(1L)).thenReturn(project);
+        SecurityUtils.setContext(2L, "outsider");
+        when(projectMemberService.isProjectMember(1L, 2L)).thenReturn(false);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> projectService.copyProject(1L));
+        assertEquals(ErrorCode.FORBIDDEN, ex.getCode());
+    }
+
     private Project createMockProject(Long projectId, String name) {
         Project project = new Project();
         project.setId(projectId);

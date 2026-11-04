@@ -10,6 +10,7 @@ import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.page.service.PageService;
+import com.visualbuilder.project.service.ProjectMemberService;
 import com.visualbuilder.publish.dto.PublishResultVO;
 import com.visualbuilder.publish.dto.PublishTaskMessage;
 import com.visualbuilder.publish.entity.PublishRecord;
@@ -36,8 +37,22 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
         implements PublishService {
 
     private final PageService pageService;
+    private final ProjectMemberService projectMemberService;
     private final PublishTaskProducer publishTaskProducer;
     private final StringRedisTemplate redisTemplate;
+
+    /**
+     * 校验当前用户是否有权访问该项目（所有者或项目成员）；未登录一律拒绝。
+     */
+    private void checkProjectAccess(Long projectId) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        if (!projectMemberService.isProjectOwnerOrMember(projectId, currentUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
+        }
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -51,6 +66,8 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
             throw new BusinessException(ErrorCode.PUBLISH_FAILED, "页面内容为空，无法发布");
         }
 
+        // 权限校验：仅项目所有者或成员可发布（未登录一律拒绝）
+        checkProjectAccess(projectId);
         Long userId = SecurityUtils.getCurrentUserId();
 
         // 2. 检查是否已有进行中的发布任务（防并发，使用 Redis 分布式锁）
@@ -135,6 +152,9 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
 
     @Override
     public PageResult<PublishRecord> getPublishHistory(Long projectId, int page, int pageSize) {
+        // 未登录一律拒绝；仅项目所有者或成员可查看发布历史
+        checkProjectAccess(projectId);
+
         Page<PublishRecord> pageParam = new Page<>(page, pageSize);
         LambdaQueryWrapper<PublishRecord> wrapper = new LambdaQueryWrapper<PublishRecord>()
                 .eq(PublishRecord::getProjectId, projectId)
@@ -146,7 +166,13 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
 
     @Override
     public PublishRecord getPublishStatus(Long recordId) {
-        return this.getById(recordId);
+        PublishRecord record = this.getById(recordId);
+        if (record == null) {
+            return null;
+        }
+        // 未登录一律拒绝；仅项目所有者或成员可查看发布状态
+        checkProjectAccess(record.getProjectId());
+        return record;
     }
 
     @Override

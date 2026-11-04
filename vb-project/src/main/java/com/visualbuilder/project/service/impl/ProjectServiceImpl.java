@@ -61,14 +61,7 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
         // 权限校验：仅项目所有者或成员才能查看详情（未登录一律拒绝）
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        if (currentUserId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
-        if (!currentUserId.equals(project.getUserId())
-                && !projectMemberService.isProjectMember(projectId, currentUserId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
-        }
+        checkProjectAccess(project);
         return toVO(project);
     }
 
@@ -190,10 +183,9 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "源项目不存在");
         }
 
+        // 仅项目所有者或成员可复制
+        checkProjectAccess(source);
         Long userId = SecurityUtils.getCurrentUserId();
-        if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
-        }
 
         Project copy = new Project();
         copy.setName(source.getName() + " (副本)");
@@ -217,6 +209,20 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         }
         if (!project.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此项目");
+        }
+    }
+
+    /**
+     * 校验当前用户是否有权访问该项目（所有者或项目成员）；未登录一律拒绝。
+     */
+    private void checkProjectAccess(Project project) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
+        }
+        if (!currentUserId.equals(project.getUserId())
+                && !projectMemberService.isProjectMember(project.getId(), currentUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该项目");
         }
     }
 
@@ -289,6 +295,9 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         if (project == null) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
+
+        // 仅项目所有者或成员可导出
+        checkProjectAccess(project);
 
         Map<String, Object> exportData = new java.util.LinkedHashMap<>();
         exportData.put("name", project.getName());

@@ -51,6 +51,10 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
         }
+        // 仅项目所有者或成员可向该项目创建页面
+        if (!projectMemberService.isProjectOwnerOrMember(projectId, userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权在该项目中创建页面");
+        }
 
         Page page = new Page();
         page.setProjectId(projectId);
@@ -67,13 +71,10 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         return toVO(page);
     }
 
-    @Override
-    public PageVO getPageDetail(Long pageId) {
-        Page page = getById(pageId);
-        if (page == null) {
-            throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
-        }
-        // 权限校验：页面创建者、项目所有者或项目成员可访问（未登录一律拒绝）
+    /**
+     * 校验当前用户是否有权访问该页面：页面创建者、项目所有者或项目成员；未登录一律拒绝。
+     */
+    private void assertPageAccess(Page page) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         if (currentUserId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户未登录");
@@ -82,6 +83,16 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
                 && !projectMemberService.isProjectOwnerOrMember(page.getProjectId(), currentUserId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权访问该页面");
         }
+    }
+
+    @Override
+    public PageVO getPageDetail(Long pageId) {
+        Page page = getById(pageId);
+        if (page == null) {
+            throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
+        }
+        // 权限校验：页面创建者、项目所有者或项目成员可访问（未登录一律拒绝）
+        assertPageAccess(page);
         return toVO(page);
     }
 
@@ -168,6 +179,13 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
 
     @Override
     public List<PageVersion> getVersionList(Long pageId) {
+        Page page = getById(pageId);
+        if (page == null) {
+            throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
+        }
+        // 权限校验：页面创建者、项目所有者或项目成员可访问（未登录一律拒绝）
+        assertPageAccess(page);
+
         LambdaQueryWrapper<PageVersion> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(PageVersion::getPageId, pageId)
                 .orderByDesc(PageVersion::getVersionNo);
