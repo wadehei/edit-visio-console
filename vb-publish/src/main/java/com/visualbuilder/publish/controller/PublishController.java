@@ -8,11 +8,14 @@ import com.visualbuilder.publish.entity.PublishRecord;
 import com.visualbuilder.publish.service.PublishService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "发布管理")
 @RestController
+@Validated
 @RequiredArgsConstructor
 public class PublishController {
 
@@ -24,7 +27,7 @@ public class PublishController {
     public R<PublishResultVO> publish(
             @PathVariable Long projectId,
             @PathVariable Long pageId,
-            @RequestParam(required = false) String changelog) {
+            @RequestParam(required = false) @Size(max = 500, message = "发布备注最多 500 个字符") String changelog) {
         return R.ok(publishService.publish(projectId, pageId, changelog));
     }
 

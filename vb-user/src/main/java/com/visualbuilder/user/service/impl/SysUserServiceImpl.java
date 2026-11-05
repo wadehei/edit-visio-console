@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,13 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
 
     private static final int MAX_LOGIN_ATTEMPTS = 5;
     private static final Duration LOCK_DURATION = Duration.ofMinutes(15);
+
+    /** 原子「计数 + 首次设置过期」脚本，避免 INCR 成功但 EXPIRE 丢失导致计数永不过期 */
+    private static final DefaultRedisScript<Long> RECORD_FAILURE_SCRIPT = new DefaultRedisScript<>(
+            "local c = redis.call('INCR', KEYS[1]); "
+                    + "if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; "
+                    + "return c;",
+            Long.class);
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -102,7 +111,7 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
         String loginKey = dto.getLogin();
 
         // 检查是否被锁定
-        String lockKey = "login:lock:" + loginKey;
+        String lockKey = RedisKeyConst.loginLock(loginKey);
         if (Boolean.TRUE.equals(redisTemplate.hasKey(lockKey))) {
             Long ttl = redisTemplate.getExpire(lockKey);
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED,
@@ -132,7 +141,7 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
         }
 
         // 登录成功，清除失败计数
-        redisTemplate.delete("login:fail:" + loginKey);
+        redisTemplate.delete(RedisKeyConst.loginFail(loginKey));
 
         // 查询角色和权限
         List<String> roleKeys = baseMapper.selectRoleKeysByUserId(user.getId());
@@ -279,13 +288,11 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
      * 记录登录失败次数，超过阈值则锁定账号
      */
     private void recordLoginFailure(String loginKey) {
-        String failKey = "login:fail:" + loginKey;
-        Long attempts = redisTemplate.opsForValue().increment(failKey);
-        if (attempts != null && attempts == 1) {
-            redisTemplate.expire(failKey, LOCK_DURATION);
-        }
+        String failKey = RedisKeyConst.loginFail(loginKey);
+        Long attempts = redisTemplate.execute(RECORD_FAILURE_SCRIPT,
+                Collections.singletonList(failKey), String.valueOf(LOCK_DURATION.getSeconds()));
         if (attempts != null && attempts >= MAX_LOGIN_ATTEMPTS) {
-            redisTemplate.opsForValue().set("login:lock:" + loginKey, "LOCKED", LOCK_DURATION);
+            redisTemplate.opsForValue().set(RedisKeyConst.loginLock(loginKey), "LOCKED", LOCK_DURATION);
             log.warn("登录失败次数过多，账号已锁定: loginKey={}", loginKey);
         }
     }

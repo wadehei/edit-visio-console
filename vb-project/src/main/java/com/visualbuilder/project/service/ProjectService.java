@@ -3,6 +3,7 @@ package com.visualbuilder.project.service;
 import com.visualbuilder.common.core.base.BaseService;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.project.dto.ProjectCreateDTO;
+import com.visualbuilder.project.dto.ProjectImportDTO;
 import com.visualbuilder.project.dto.ProjectVO;
 import com.visualbuilder.project.entity.Project;
 
@@ -38,5 +39,5 @@ public interface ProjectService extends BaseService<Project> {
     Map<String, Object> exportProject(Long projectId);
 
     /** 从 JSON 导入项目 */
-    ProjectVO importProject(Map<String, Object> projectData);
+    ProjectVO importProject(ProjectImportDTO dto);
 }

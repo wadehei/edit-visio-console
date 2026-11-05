@@ -2,6 +2,7 @@ package com.visualbuilder.common.core.exception;
 
 import com.visualbuilder.common.core.result.R;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -55,6 +56,20 @@ public class GlobalExceptionHandler {
 
         R<Void> r = R.fieldErrors(fieldErrors);
         r.setMessage(summary);
+        r.setPath(request.getRequestURI());
+        return r;
+    }
+
+    /**
+     * 路径变量 / 请求参数校验失败（@Validated 方法级约束） — 返回 400
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public R<Void> handleConstraintViolation(ConstraintViolationException e, HttpServletRequest request) {
+        String summary = e.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .collect(Collectors.joining("; "));
+        R<Void> r = R.badRequest(summary);
         r.setPath(request.getRequestURI());
         return r;
     }

@@ -10,6 +10,7 @@ import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.util.PageUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.page.service.PageService;
 import com.visualbuilder.project.service.ProjectMemberService;
 import com.visualbuilder.publish.dto.PublishResultVO;
@@ -129,14 +130,14 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
         record.setPageId(pageId);
         record.setVersionNo(nextVersion);
         record.setStatus(StatusConst.Publish.PENDING);
-        record.setChangelog(changelog);
+        record.setChangelog(truncateChangelog(changelog));
         record.setPublishedBy(userId);
         this.save(record);
 
-        // 5. 发送异步任务消息
+        // 5. 发送异步任务消息 — 必须等事务提交后再发送，否则事务回滚会出现"消息已发、记录不存在"
         PublishTaskMessage msg = new PublishTaskMessage(
                 record.getId(), projectId, pageId, nextVersion);
-        publishTaskProducer.send(msg);
+        TransactionUtils.executeAfterCommit(() -> publishTaskProducer.send(msg));
 
         log.info("发布任务已创建: recordId=" + record.getId()
                 + ", projectId=" + projectId + ", pageId=" + pageId + ", version=" + nextVersion);
@@ -168,11 +169,23 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
     public PublishRecord getPublishStatus(Long recordId) {
         PublishRecord record = this.getById(recordId);
         if (record == null) {
-            return null;
+            throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "发布记录不存在");
         }
         // 未登录一律拒绝；仅项目所有者或成员可查看发布状态
         checkProjectAccess(record.getProjectId());
         return record;
+    }
+
+    /**
+     * 发布备注长度上限（字符），超出部分截断，避免超长文本写入数据库。
+     */
+    private static final int CHANGELOG_MAX_LENGTH = 500;
+
+    private static String truncateChangelog(String changelog) {
+        if (changelog == null || changelog.length() <= CHANGELOG_MAX_LENGTH) {
+            return changelog;
+        }
+        return changelog.substring(0, CHANGELOG_MAX_LENGTH);
     }
 
     @Override

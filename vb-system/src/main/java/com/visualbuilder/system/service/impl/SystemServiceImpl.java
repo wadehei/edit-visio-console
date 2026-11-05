@@ -9,6 +9,7 @@ import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.util.PageUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.system.dto.HealthCheckVO;
 import com.visualbuilder.system.entity.LoginLog;
 import com.visualbuilder.system.entity.SysConfig;
@@ -76,8 +77,8 @@ public class SystemServiceImpl extends BaseServiceImpl<SysConfigMapper, SysConfi
         config.setConfigValue(configValue);
         this.updateById(config);
 
-        // 清除缓存
-        redisTemplate.delete(CONFIG_CACHE_KEY);
+        // 清除缓存 — 事务提交后执行，避免回滚后缓存已被清空
+        TransactionUtils.executeAfterCommit(() -> redisTemplate.delete(CONFIG_CACHE_KEY));
         log.info("更新系统配置: key={}", configKey);
     }
 

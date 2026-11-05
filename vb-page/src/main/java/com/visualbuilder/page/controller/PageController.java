@@ -5,6 +5,7 @@ import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.page.dto.PageCreateDTO;
 import com.visualbuilder.page.dto.PageSchemaDTO;
+import com.visualbuilder.page.dto.PageUpdateDTO;
 import com.visualbuilder.page.dto.PageVO;
 import com.visualbuilder.page.entity.PageVersion;
 import com.visualbuilder.page.service.PageService;
@@ -54,7 +55,7 @@ public class PageController {
     @PutMapping("/{pageId}")
     public R<PageVO> updatePageInfo(@PathVariable Long projectId,
                                     @PathVariable Long pageId,
-                                    @Valid @RequestBody PageCreateDTO dto) {
+                                    @Valid @RequestBody PageUpdateDTO dto) {
         return R.ok(pageService.updatePageInfo(pageId, dto));
     }
 

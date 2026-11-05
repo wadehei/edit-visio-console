@@ -4,6 +4,7 @@ import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.project.dto.ProjectCreateDTO;
+import com.visualbuilder.project.dto.ProjectImportDTO;
 import com.visualbuilder.project.dto.ProjectVO;
 import com.visualbuilder.project.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -109,7 +110,7 @@ public class ProjectController {
     @OpLog(module = "项目管理", action = "导入项目")
     @Operation(summary = "导入项目配置")
     @PostMapping("/import")
-    public R<ProjectVO> importProject(@RequestBody Map<String, Object> projectData) {
-        return R.ok(projectService.importProject(projectData));
+    public R<ProjectVO> importProject(@Valid @RequestBody ProjectImportDTO dto) {
+        return R.ok(projectService.importProject(dto));
     }
 }

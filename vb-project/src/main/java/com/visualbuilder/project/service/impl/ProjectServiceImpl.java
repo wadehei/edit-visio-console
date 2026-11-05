@@ -11,6 +11,7 @@ import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.project.dto.ProjectCreateDTO;
+import com.visualbuilder.project.dto.ProjectImportDTO;
 import com.visualbuilder.project.dto.ProjectVO;
 import com.visualbuilder.project.entity.Project;
 import com.visualbuilder.project.entity.ProjectMember;
@@ -307,14 +308,11 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public ProjectVO importProject(Map<String, Object> projectData) {
+    public ProjectVO importProject(ProjectImportDTO dto) {
         Long userId = SecurityUtils.requireCurrentUserId();
 
-        String name = (String) projectData.getOrDefault("name", "导入项目");
-        String description = (String) projectData.get("description");
-        String coverUrl = (String) projectData.get("coverUrl");
-        Integer status = projectData.get("status") != null ?
-                ((Number) projectData.get("status")).intValue() : StatusConst.Project.DRAFT;
+        String name = StringUtils.hasText(dto.getName()) ? dto.getName() : "导入项目";
+        Integer status = dto.getStatus() != null ? dto.getStatus() : StatusConst.Project.DRAFT;
         // 边界校验：导入的 status 必须为合法项目状态，避免外部数据写入非法值
         if (status != StatusConst.Project.DRAFT
                 && status != StatusConst.Project.PUBLISHED
@@ -324,19 +322,14 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
                             + StatusConst.Project.PUBLISHED + "(已发布) 或 "
                             + StatusConst.Project.ARCHIVED + "(已归档)");
         }
-        Object settings = projectData.get("settings");
 
         Project project = new Project();
         project.setName(name + " (导入)");
-        project.setDescription(description);
-        project.setCoverUrl(coverUrl);
+        project.setDescription(dto.getDescription());
+        project.setCoverUrl(dto.getCoverUrl());
         project.setUserId(userId);
         project.setStatus(status);
-        if (settings instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> settingsMap = (Map<String, Object>) settings;
-            project.setSettings(settingsMap);
-        }
+        project.setSettings(dto.getSettings());
         save(project);
 
         log.info("导入项目: projectId={}, name={}", project.getId(), project.getName());

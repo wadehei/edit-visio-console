@@ -9,6 +9,7 @@ import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.storage.StorageService;
 import com.visualbuilder.common.util.PageUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visualbuilder.resource.dto.UploadResultVO;
@@ -115,6 +116,16 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
             log.error("文件上传失败: {}", e.getMessage(), e);
             throw new BusinessException(ErrorCode.STORAGE_ERROR, "文件上传失败");
         }
+
+        // 存储已写入但记录尚未落库：注册事务回滚补偿，避免留下「有文件、无记录」的孤儿文件
+        final String uploadedPath = storagePath;
+        TransactionUtils.executeOnRollback(() -> {
+            try {
+                storageService.delete(uploadedPath);
+            } catch (Exception ex) {
+                log.warn("回滚清理存储文件失败: path={}, error={}", uploadedPath, ex.getMessage());
+            }
+        });
 
         Resource resource = new Resource();
         resource.setUserId(userId);
@@ -414,7 +425,8 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
                 cursor.forEachRemaining(keys::add);
             }
             if (!keys.isEmpty()) {
-                redisTemplate.delete(keys);
+                // 事务提交后再失效缓存，避免回滚后缓存已被清空
+                TransactionUtils.executeAfterCommit(() -> redisTemplate.delete(keys));
             }
         } catch (Exception e) {
             log.warn("清理资源列表缓存失败: userId={}, error={}", userId, e.getMessage());

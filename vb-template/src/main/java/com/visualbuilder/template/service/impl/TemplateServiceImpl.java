@@ -8,6 +8,7 @@ import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.utils.SecurityUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.mapper.PageMapper;
 import com.visualbuilder.project.service.ProjectMemberService;
@@ -140,7 +141,8 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
     }
 
     private void evictCache() {
-        redisTemplate.delete(CACHE_KEY_LIST);
+        // 事务提交后再失效缓存，避免「缓存已清、事务回滚」导致读到旧值以外的脏读
+        TransactionUtils.executeAfterCommit(() -> redisTemplate.delete(CACHE_KEY_LIST));
     }
 
     @Override

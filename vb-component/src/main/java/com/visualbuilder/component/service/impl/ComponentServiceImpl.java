@@ -9,6 +9,7 @@ import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.component.dto.ComponentCreateDTO;
 import com.visualbuilder.component.dto.ComponentUpdateDTO;
 import com.visualbuilder.component.dto.ComponentVO;
@@ -131,7 +132,8 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
      * 清除组件列表缓存（供管理操作调用）
      */
     public void evictCache() {
-        redisTemplate.delete(CACHE_KEY_ALL);
+        // 事务提交后再失效缓存，避免「缓存已清、事务回滚」造成的不一致
+        TransactionUtils.executeAfterCommit(() -> redisTemplate.delete(CACHE_KEY_ALL));
     }
 
     private ComponentVO toVO(Component c) {

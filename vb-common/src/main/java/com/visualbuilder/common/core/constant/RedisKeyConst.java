@@ -27,6 +27,20 @@ public final class RedisKeyConst {
     /** 刷新令牌（Refresh Token）缓存，拼接 userId */
     public static final String REFRESH_TOKEN_PREFIX = "token:refresh:";
 
+    /** 登录失败计数，拼接登录标识（用户名/手机号） */
+    public static final String LOGIN_FAIL_PREFIX = "login:fail:";
+
+    /** 账号锁定标记，拼接登录标识 */
+    public static final String LOGIN_LOCK_PREFIX = "login:lock:";
+
+    public static String loginFail(String loginKey) {
+        return LOGIN_FAIL_PREFIX + loginKey;
+    }
+
+    public static String loginLock(String loginKey) {
+        return LOGIN_LOCK_PREFIX + loginKey;
+    }
+
     public static String tokenBlacklist(String jti) {
         return TOKEN_BLACKLIST_PREFIX + jti;
     }

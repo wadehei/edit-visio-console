@@ -15,6 +15,7 @@ import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.page.dto.PageCreateDTO;
 import com.visualbuilder.page.dto.PageSchemaDTO;
+import com.visualbuilder.page.dto.PageUpdateDTO;
 import com.visualbuilder.page.dto.PageVO;
 import com.visualbuilder.page.entity.Page;
 import com.visualbuilder.page.entity.PageVersion;
@@ -48,6 +49,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
 
     @Value("${business.page.max-version-count:50}")
     private int maxVersionCount;
+
+    /** schema_content 列名 — 列表查询时排除该大字段 */
+    private static final String SCHEMA_CONTENT_COLUMN = "schema_content";
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -105,6 +109,8 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         }
 
         LambdaQueryWrapper<Page> wrapper = new LambdaQueryWrapper<>();
+        // 列表不需要完整 schema，排除大字段避免无谓的 IO 与反序列化开销
+        wrapper.select(Page.class, info -> !SCHEMA_CONTENT_COLUMN.equals(info.getColumn()));
         wrapper.eq(Page::getProjectId, projectId);
         if (StringUtils.hasText(keyword)) {
             wrapper.like(Page::getName, keyword);
@@ -116,13 +122,13 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         var pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<Page>(pn, ps);
         var result = page(pageParam, wrapper);
 
-        List<PageVO> voList = result.getRecords().stream().map(this::toVO).toList();
+        List<PageVO> voList = result.getRecords().stream().map(this::toListVO).toList();
         return PageResult.of(voList, result.getTotal(), pn, ps);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public PageVO updatePageInfo(Long pageId, PageCreateDTO dto) {
+    public PageVO updatePageInfo(Long pageId, PageUpdateDTO dto) {
         Page page = getById(pageId);
         if (page == null) {
             throw new BusinessException(ErrorCode.PAGE_NOT_FOUND, "页面不存在");
@@ -339,9 +345,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
                             .eq(PageVersion::getPageId, page.getId())
                             .orderByAsc(PageVersion::getVersionNo)
                             .last("LIMIT " + excess));
-            for (PageVersion old : oldest) {
-                pageVersionMapper.deleteById(old.getId());
-            }
+            List<Long> expiredIds = oldest.stream().map(PageVersion::getId).toList();
+            pageVersionMapper.delete(new LambdaQueryWrapper<PageVersion>()
+                    .in(PageVersion::getId, expiredIds));
             log.info("清理过期版本: pageId={}, 删除{}个旧版本", page.getId(), oldest.size());
         }
     }
@@ -367,6 +373,23 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
             return true;
         }
         return projectMemberService.hasProjectRole(page.getProjectId(), userId, ProjectRole.EDIT);
+    }
+
+    /**
+     * 列表场景的轻量 VO — 不解析 schema_content，避免为大字段付出 JSON 解析开销。
+     */
+    private PageVO toListVO(Page page) {
+        return PageVO.builder()
+                .pageId(page.getId())
+                .projectId(page.getProjectId())
+                .title(page.getName())
+                .path(page.getPagePath())
+                .isHome(page.getIsHome() != null && page.getIsHome() == StatusConst.YesNo.YES)
+                .status(page.getStatus())
+                .version(page.getSchemaVersion())
+                .createdAt(page.getCreatedTime())
+                .updatedAt(page.getUpdatedTime())
+                .build();
     }
 
     private PageVO toVO(Page page) {
