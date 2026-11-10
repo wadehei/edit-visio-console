@@ -1,6 +1,9 @@
 -- ============================================================
 -- 可视化装修平台 - 数据库初始化脚本
 -- 匹配 Java 实体定义 (BaseEntity: id, created_by, created_time, updated_by, updated_time, deleted)
+--
+-- 本文件是建库的唯一入口：表结构与索引全部在此定义，无需再执行任何补丁脚本。
+-- 注意：脚本开头会 DROP 相关表，重复执行将清空已有数据，仅用于开发环境初始化。
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS visual_builder DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -43,7 +46,12 @@ CREATE TABLE sys_user (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   deleted         TINYINT         NOT NULL DEFAULT 0       COMMENT '逻辑删除 0正常 1删除',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_username (username, deleted)
+  UNIQUE KEY uk_username (username, deleted),
+  KEY idx_user_tenant (tenant_id),
+  KEY idx_user_dept (dept_id),
+  KEY idx_user_status (status),
+  KEY idx_user_email (email),
+  KEY idx_user_phone (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='用户表';
 
 -- 1.2 角色表
@@ -63,7 +71,9 @@ CREATE TABLE sys_role (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_role_key (role_key, deleted)
+  UNIQUE KEY uk_role_key (role_key, deleted),
+  KEY idx_role_tenant (tenant_id),
+  KEY idx_role_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='角色表';
 
 -- 1.3 权限表
@@ -88,7 +98,8 @@ CREATE TABLE sys_permission (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_parent_id (parent_id)
+  KEY idx_parent_id (parent_id),
+  UNIQUE KEY uk_permission_key (permission_key, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='权限表';
 
 -- 1.4 用户角色关联表
@@ -106,7 +117,8 @@ CREATE TABLE sys_role_permission (
   role_id         BIGINT          NOT NULL,
   permission_id   BIGINT          NOT NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_role_permission (role_id, permission_id)
+  UNIQUE KEY uk_role_permission (role_id, permission_id),
+  KEY idx_rp_permission (permission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='角色权限关联表';
 
 -- 1.6 部门表
@@ -125,7 +137,8 @@ CREATE TABLE sys_dept (
   updated_by      BIGINT          DEFAULT NULL,
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  KEY idx_dept_tenant_parent (tenant_id, parent_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='部门表';
 
 -- --------------------------------------------------------------------------
@@ -158,7 +171,10 @@ CREATE TABLE biz_project (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_user_id (user_id)
+  KEY idx_user_id (user_id),
+  KEY idx_project_status (status),
+  KEY idx_project_created_time (created_time),
+  KEY idx_project_user_deleted (user_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='项目表';
 
 -- 2.2 页面表
@@ -180,8 +196,11 @@ CREATE TABLE biz_page (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_project_id (project_id),
-  KEY idx_user_id (user_id)
+  KEY idx_user_id (user_id),
+  KEY idx_page_path (page_path),
+  KEY idx_page_status (status),
+  KEY idx_page_project_status (project_id, status, deleted),
+  KEY idx_page_project_user_deleted (project_id, user_id, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='页面表';
 
 -- 2.3 页面版本表
@@ -231,7 +250,9 @@ CREATE TABLE biz_component (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_category_id (category_id)
+  KEY idx_component_type (type),
+  KEY idx_component_status (status),
+  KEY idx_component_category_status (category_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='组件表';
 
 -- 2.6 模板分类表
@@ -243,7 +264,8 @@ CREATE TABLE biz_template_category (
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  KEY idx_template_category_sort (sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='模板分类表';
 
 -- 2.7 模板表
@@ -266,7 +288,8 @@ CREATE TABLE biz_template (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_category_id (category_id)
+  KEY idx_category_id (category_id),
+  KEY idx_template_status_usecount (status, use_count)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='模板表';
 
 -- 2.8 项目成员表
@@ -277,22 +300,27 @@ CREATE TABLE biz_project_member (
   permission      VARCHAR(20)     NOT NULL DEFAULT 'view',
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_project_user (project_id, user_id)
+  UNIQUE KEY uk_project_user (project_id, user_id),
+  KEY idx_member_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='项目成员表';
 
 -- 2.9 发布记录表
 CREATE TABLE biz_publish_record (
   id              BIGINT          NOT NULL AUTO_INCREMENT,
   page_id         BIGINT          NOT NULL,
+  project_id      BIGINT          NOT NULL DEFAULT 0       COMMENT '所属项目ID',
   version_no      INT             NOT NULL,
   status          TINYINT         NOT NULL DEFAULT 0       COMMENT '0处理中 1成功 2失败',
   access_url      VARCHAR(500)    NOT NULL DEFAULT '',
   changelog       VARCHAR(500)    NOT NULL DEFAULT '',
+  failed_reason   VARCHAR(1000)   DEFAULT NULL             COMMENT '失败原因',
   published_by    BIGINT          NOT NULL,
   published_at    DATETIME        DEFAULT NULL,
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_page_id (page_id)
+  KEY idx_page_id (page_id),
+  KEY idx_publish_project_id (project_id),
+  KEY idx_publish_project_published (project_id, published_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='发布记录表';
 
 -- --------------------------------------------------------------------------
@@ -317,8 +345,8 @@ CREATE TABLE res_file (
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_user_type (user_id, resource_type),
-  KEY idx_md5 (md5_hash)
+  KEY idx_md5 (md5_hash),
+  KEY idx_resource_user_type_deleted (user_id, resource_type, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='文件资源表';
 
 -- --------------------------------------------------------------------------
@@ -369,7 +397,9 @@ CREATE TABLE sys_login_log (
   message         VARCHAR(200)    NOT NULL DEFAULT '',
   login_time      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_login_time (login_time)
+  KEY idx_login_time (login_time),
+  KEY idx_loginlog_user (user_id),
+  KEY idx_loginlog_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='登录日志表';
 
 -- --------------------------------------------------------------------------

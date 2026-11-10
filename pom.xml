@@ -172,6 +172,29 @@
                     <encoding>${project.build.sourceEncoding}</encoding>
                 </configuration>
             </plugin>
+
+            <!--
+              集成测试（*IT）由 failsafe 在 verify 阶段执行，不进入 test 阶段。
+              原因：*IT 依赖本机真实中间件（Redis/MySQL），而 `mvn test` 必须在无外部依赖时也能通过。
+              运行方式：mvn verify
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

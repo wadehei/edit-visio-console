@@ -53,6 +53,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
     /** schema_content 列名 — 列表查询时排除该大字段 */
     private static final String SCHEMA_CONTENT_COLUMN = "schema_content";
 
+    /** schema_snapshot 列名 — 版本列表查询时排除该大字段 */
+    private static final String SCHEMA_SNAPSHOT_COLUMN = "schema_snapshot";
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageVO createPage(Long projectId, PageCreateDTO dto) {
@@ -190,6 +193,8 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         assertPageAccess(page);
 
         LambdaQueryWrapper<PageVersion> wrapper = new LambdaQueryWrapper<>();
+        // 版本列表不需要完整快照，排除大字段避免无谓的 IO 与反序列化开销
+        wrapper.select(PageVersion.class, info -> !SCHEMA_SNAPSHOT_COLUMN.equals(info.getColumn()));
         wrapper.eq(PageVersion::getPageId, pageId)
                 .orderByDesc(PageVersion::getVersionNo);
         return pageVersionMapper.selectList(wrapper);

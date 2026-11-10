@@ -45,6 +45,9 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
     private static final String CACHE_KEY_LIST = "template:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
 
+    /** 列表不需要完整 Schema，查询时排除该大字段 */
+    private static final String PAGE_SCHEMA_COLUMN = "page_schema";
+
     @Override
     public List<Template> listTemplates(Long categoryId, String keyword, String tag) {
         // 无过滤条件时使用缓存
@@ -59,8 +62,10 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
             }
         }
 
-        LambdaQueryWrapper<Template> wrapper = new LambdaQueryWrapper<Template>()
-                .eq(categoryId != null, Template::getCategoryId, categoryId)
+        LambdaQueryWrapper<Template> wrapper = new LambdaQueryWrapper<>();
+        // 列表不需要完整 Schema，排除大字段避免无谓的 IO、反序列化与缓存膨胀
+        wrapper.select(Template.class, info -> !PAGE_SCHEMA_COLUMN.equals(info.getColumn()));
+        wrapper.eq(categoryId != null, Template::getCategoryId, categoryId)
                 .like(StringUtils.hasText(keyword), Template::getName, keyword)
                 .like(StringUtils.hasText(tag), Template::getTags, tag)
                 .eq(Template::getStatus, StatusConst.Template.ON_SHELF)

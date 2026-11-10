@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -38,6 +39,10 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
 
     private static final String CACHE_KEY_ALL = "component:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
+
+    /** 列表不需要完整定义，查询时排除三个大字段 */
+    private static final Set<String> SCHEMA_COLUMNS =
+            Set.of("schema_define", "default_props", "default_styles");
 
     @Override
     public List<ComponentVO> listComponents(Long categoryId, String keyword) {
@@ -53,8 +58,10 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
             }
         }
 
-        LambdaQueryWrapper<Component> wrapper = new LambdaQueryWrapper<Component>()
-                .eq(categoryId != null, Component::getCategoryId, categoryId)
+        LambdaQueryWrapper<Component> wrapper = new LambdaQueryWrapper<>();
+        // 列表不需要完整定义，排除大字段避免无谓的 IO、反序列化与缓存膨胀
+        wrapper.select(Component.class, info -> !SCHEMA_COLUMNS.contains(info.getColumn()));
+        wrapper.eq(categoryId != null, Component::getCategoryId, categoryId)
                 .like(StringUtils.hasText(keyword), Component::getName, keyword)
                 .eq(Component::getStatus, StatusConst.Enable.ENABLED)
                 .orderByAsc(Component::getSortOrder)

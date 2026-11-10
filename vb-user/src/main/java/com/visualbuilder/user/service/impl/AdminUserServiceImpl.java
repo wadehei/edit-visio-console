@@ -9,6 +9,7 @@ import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.util.PageUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.user.dto.AdminUserCreateDTO;
 import com.visualbuilder.user.dto.AdminUserUpdateDTO;
 import com.visualbuilder.user.entity.SysUser;
@@ -131,13 +132,18 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
         user.setStatus(status);
         this.updateById(user);
 
-        // 同步 Redis 禁用标记，使 JWT Filter 即时生效
+        // 同步 Redis 禁用标记，使 JWT Filter 即时生效。
+        // 必须推迟到事务提交之后：否则事务回滚时标记已写入/已删除，与 DB 最终状态不一致
+        // （回滚后用户被错误锁死或被错误放行）。与系统内其余缓存失效/消息发送副作用保持一致。
         String disabledKey = RedisKeyConst.userDisabled(userId);
-        if (status == StatusConst.User.DISABLED) {
-            redisTemplate.opsForValue().set(disabledKey, "1", Duration.ofSeconds(disabledFlagTtlSeconds));
-        } else {
-            redisTemplate.delete(disabledKey);
-        }
+        boolean disabled = status == StatusConst.User.DISABLED;
+        TransactionUtils.executeAfterCommit(() -> {
+            if (disabled) {
+                redisTemplate.opsForValue().set(disabledKey, "1", Duration.ofSeconds(disabledFlagTtlSeconds));
+            } else {
+                redisTemplate.delete(disabledKey);
+            }
+        });
         log.info("管理员更新用户状态: userId={}, status={}", userId, status);
     }
 

@@ -45,8 +45,8 @@ edit-visio-console/
 ### 1. 初始化数据库
 ```bash
 mysql -u root -p < sql/init.sql
-mysql -u root -p < sql/index-optimization.sql   # 可选，索引优化
 ```
+`sql/init.sql` 是唯一的建库入口，已包含全部表结构与索引。注意：脚本会先 `DROP TABLE`，重复执行将清空已有数据，仅用于开发环境初始化。
 
 ### 2. 配置环境变量
 ```bash
@@ -78,7 +78,7 @@ mvn spring-boot:run
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | JWT_SECRET | JWT 签名密钥（生产必填） | 开发默认值 |
-| DB_PASSWORD | MySQL 密码 | root123456 |
+| DB_PASSWORD | MySQL 密码 | root123 |
 | MINIO_ACCESS_KEY | MinIO 访问密钥 | minioadmin |
 | MINIO_SECRET_KEY | MinIO 密钥 | minioadmin |
 | RABBITMQ_PASSWORD | RabbitMQ 密码 | guest |
