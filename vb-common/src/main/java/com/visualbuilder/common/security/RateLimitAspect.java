@@ -49,8 +49,8 @@ public class RateLimitAspect {
         Long current = redisTemplate.execute(
                 SCRIPT,
                 Collections.singletonList(limitKey),
-                (long) rateLimit.maxRequests(),
-                (long) rateLimit.windowSeconds());
+                String.valueOf(rateLimit.maxRequests()),
+                String.valueOf(rateLimit.windowSeconds()));
 
         if (current != null && current > rateLimit.maxRequests()) {
             log.warn("限流触发: key={}, current={}, limit={}", limitKey, current, rateLimit.maxRequests());
