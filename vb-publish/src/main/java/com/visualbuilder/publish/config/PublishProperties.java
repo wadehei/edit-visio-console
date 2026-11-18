@@ -30,6 +30,6 @@ public class PublishProperties {
     /** 发布失败后的最大重试次数（不含首次执行） */
     private int maxRetry = 2;
 
-    /** 每次重试的间隔毫秒数（阻塞当前消费线程，发布为低频操作） */
+    /** 两次重试之间的间隔毫秒数（消息在延迟队列中等待该时长后重新投递，不阻塞消费线程） */
     private long retryIntervalMs = 2000;
 }

@@ -25,4 +25,7 @@ public class PublishTaskMessage implements Serializable {
 
     /** 发布版本号 */
     private Integer versionNo;
+
+    /** 已重试次数（首次投递为 0）；重试时由消费者累加，用于判定是否超出重试上限 */
+    private int retryCount;
 }

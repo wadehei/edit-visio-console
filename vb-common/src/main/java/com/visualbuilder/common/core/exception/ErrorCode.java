@@ -43,6 +43,8 @@ public final class ErrorCode {
     public static final int TEMPLATE_NOT_FOUND  = 40003;
     public static final int RESOURCE_NOT_FOUND  = 40004;
     public static final int PUBLISH_FAILED      = 40005;
+    /** Schema 并发保存冲突（乐观锁未命中） */
+    public static final int PAGE_SCHEMA_CONFLICT = 40006;
 
     // ─── 系统 / 内部错误 ─────────────────────────────────────────
     public static final int INTERNAL_ERROR      = 50000;

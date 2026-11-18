@@ -261,7 +261,7 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         if (rows == 0) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在或未被删除");
         }
-        log.info("恢复项目: projectId=" + projectId);
+        log.info("恢复项目: projectId={}", projectId);
     }
 
     @Override
@@ -281,7 +281,7 @@ public class ProjectServiceImpl extends BaseServiceImpl<ProjectMapper, Project>
         if (rows == 0) {
             throw new BusinessException(ErrorCode.PROJECT_NOT_FOUND, "项目不存在");
         }
-        log.info("永久删除项目: projectId=" + projectId);
+        log.info("永久删除项目: projectId={}", projectId);
     }
 
     @Override

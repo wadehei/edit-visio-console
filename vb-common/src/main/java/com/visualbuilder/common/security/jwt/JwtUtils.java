@@ -43,6 +43,7 @@ public class JwtUtils {
     public String generateAccessToken(Long userId, String username, Map<String, Object> claims) {
         return Jwts.builder()
                 .subject(String.valueOf(userId))
+                .claim("tokenType", "access")
                 .claim("username", username)
                 .claims(claims)
                 .issuedAt(new Date())
@@ -100,6 +101,11 @@ public class JwtUtils {
         return parseToken(token).getId();
     }
 
+    /** 令牌类型：access / refresh；用于阻止两类令牌互相顶替使用 */
+    public String getTokenType(String token) {
+        return parseToken(token).get("tokenType", String.class);
+    }
+
     public long getRemainingTtl(String token) {
         Date expiration = parseToken(token).getExpiration();
         return Math.max(0, expiration.getTime() - System.currentTimeMillis());
@@ -107,5 +113,9 @@ public class JwtUtils {
 
     public long getAccessTokenExpire() {
         return accessTokenExpire;
+    }
+
+    public long getRefreshTokenExpire() {
+        return refreshTokenExpire;
     }
 }

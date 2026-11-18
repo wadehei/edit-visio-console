@@ -1,6 +1,7 @@
 package com.visualbuilder.page.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -159,16 +160,24 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         try {
             String schemaJson = objectMapper.writeValueAsString(dto.getSchema());
 
-            int nextVersion = (page.getSchemaVersion() != null ? page.getSchemaVersion() : 0) + 1;
+            int currentVersion = page.getSchemaVersion() != null ? page.getSchemaVersion() : 0;
+            int nextVersion = currentVersion + 1;
 
-            // 只更新 schema_content / schema_version 两列（其余列不进 UPDATE），
-            // 避免把整行元数据回写造成的写放大与并发保存时的丢失更新；
+            // 乐观锁：只更新 schema_content / schema_version 两列（其余列不进 UPDATE），
+            // 并以 WHERE schema_version = 读取时的旧值 作为并发前置条件。
+            // 两个会话并发保存时，后提交者条件不再匹配 → 影响行数为 0 → 拒绝并提示刷新，
+            // 从而避免后写静默覆盖先写（丢失更新）。
             // updated_time / updated_by 由 MyBatis-Plus 自动填充。
             Page patch = new Page();
-            patch.setId(pageId);
             patch.setSchemaContent(schemaJson);
             patch.setSchemaVersion(nextVersion);
-            updateById(patch);
+            boolean updated = update(patch, new LambdaUpdateWrapper<Page>()
+                    .eq(Page::getId, pageId)
+                    .eq(Page::getSchemaVersion, currentVersion));
+            if (!updated) {
+                throw new BusinessException(ErrorCode.PAGE_SCHEMA_CONFLICT,
+                        "页面已被其他会话修改，请刷新后重试");
+            }
 
             // 回填内存对象，供版本快照与响应 VO 使用
             page.setSchemaContent(schemaJson);

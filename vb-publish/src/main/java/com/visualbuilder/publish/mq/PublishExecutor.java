@@ -46,17 +46,17 @@ public class PublishExecutor {
         Long projectId = msg.getProjectId();
         Integer versionNo = msg.getVersionNo();
 
-        log.info("开始执行发布任务: recordId=" + recordId + ", pageId=" + pageId);
+        log.info("开始执行发布任务: recordId={}, pageId={}", recordId, pageId);
 
         try {
             // 1. 幂等性检查：如果记录已非 PENDING 状态，跳过
             var record = publishService.getById(recordId);
             if (record == null) {
-                log.warn("发布记录不存在: recordId=" + recordId);
+                log.warn("发布记录不存在: recordId={}", recordId);
                 return;
             }
             if (record.getStatus() != StatusConst.Publish.PENDING) {
-                log.info("发布记录已处理，跳过: recordId=" + recordId + ", status=" + record.getStatus());
+                log.info("发布记录已处理，跳过: recordId={}, status={}", recordId, record.getStatus());
                 return;
             }
 
@@ -78,7 +78,7 @@ public class PublishExecutor {
             } finally {
                 renderSample.stop(meterRegistry.timer("vb.publish.render"));
             }
-            log.info("HTML 渲染完成: recordId=" + recordId + ", size=" + html.length() + " bytes");
+            log.info("HTML 渲染完成: recordId={}, size={} bytes", recordId, html.length());
 
             // 4. 上传到存储（路径不含日期段：版本号已保证唯一，且便于旧版本产物按路径精确清理）
             String storagePath = buildArtifactPath(projectId, pageId, versionNo);
@@ -86,7 +86,7 @@ public class PublishExecutor {
                     html.getBytes(StandardCharsets.UTF_8));
             String accessUrl = storageService.upload(htmlStream, storagePath, "text/html; charset=utf-8");
 
-            log.info("HTML 上传完成: recordId=" + recordId + ", url=" + accessUrl);
+            log.info("HTML 上传完成: recordId={}, url={}", recordId, accessUrl);
 
             // 5+6. 同一事务内：发布记录置成功 + 页面状态置已发布
             publishService.completePublish(recordId, pageId, accessUrl);
@@ -95,13 +95,13 @@ public class PublishExecutor {
             deleteExpiredArtifact(projectId, pageId, versionNo);
 
             meterRegistry.counter("vb.publish.task", "result", "success").increment();
-            log.info("发布任务完成: recordId=" + recordId + ", pageId=" + pageId);
+            log.info("发布任务完成: recordId={}, pageId={}", recordId, pageId);
 
         } catch (Exception e) {
             meterRegistry.counter("vb.publish.task", "result", "failure").increment();
             // 只记录并抛出：重试与最终失败标记由消费者（PublishTaskConsumer）统一决策，
             // 避免首次失败即置 FAILED 导致后续重试被幂等检查短路。
-            log.error("发布任务执行失败: recordId=" + recordId + ", error=" + e.getMessage(), e);
+            log.error("发布任务执行失败: recordId={}, error={}", recordId, e.getMessage(), e);
             throw new RuntimeException("发布任务执行失败", e);
         }
     }
@@ -122,11 +122,11 @@ public class PublishExecutor {
 
         try {
             storageService.delete(buildArtifactPath(projectId, pageId, expiredVersion));
-            log.info("已清理过期发布产物: pageId=" + pageId + ", version=" + expiredVersion);
+            log.info("已清理过期发布产物: pageId={}, version={}", pageId, expiredVersion);
         } catch (Exception e) {
             // 发布已成功，清理属旁路动作，失败只记录
-            log.warn("清理过期发布产物失败: pageId=" + pageId + ", version=" + expiredVersion
-                    + ", error=" + e.getMessage());
+            log.warn("清理过期发布产物失败: pageId={}, version={}, error={}",
+                    pageId, expiredVersion, e.getMessage());
         }
     }
 }

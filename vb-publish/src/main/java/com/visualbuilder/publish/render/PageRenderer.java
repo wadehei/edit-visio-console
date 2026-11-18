@@ -80,7 +80,7 @@ public class PageRenderer {
             return html.toString();
 
         } catch (Exception e) {
-            log.error("页面渲染失败: " + e.getMessage(), e);
+            log.error("页面渲染失败: {}", e.getMessage(), e);
             throw new RuntimeException("页面渲染失败", e);
         }
     }
@@ -157,7 +157,7 @@ public class PageRenderer {
                 String json = objectMapper.writeValueAsString(list);
                 return objectMapper.readValue(json, new TypeReference<List<SchemaNode>>() {});
             } catch (Exception e) {
-                log.error("解析 children 失败: " + e.getMessage(), e);
+                log.error("解析 children 失败: {}", e.getMessage(), e);
                 return List.of();
             }
         }

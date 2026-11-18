@@ -1,5 +1,6 @@
 package com.visualbuilder.component.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -11,7 +12,9 @@ import com.visualbuilder.component.service.ComponentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +22,7 @@ import java.util.List;
 @Tag(name = "组件管理")
 @RestController
 @RequestMapping("/api/v1/components")
+@Validated
 @RequiredArgsConstructor
 public class ComponentController {
 
@@ -28,7 +32,9 @@ public class ComponentController {
     @GetMapping
     public R<List<ComponentVO>> list(
             @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "关键字最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String keyword) {
         return R.ok(componentService.listComponents(categoryId, keyword));
     }
 

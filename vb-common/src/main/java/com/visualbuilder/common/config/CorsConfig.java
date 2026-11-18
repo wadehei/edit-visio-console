@@ -26,8 +26,21 @@ public class CorsConfig {
             }
         }
 
-        config.addAllowedHeader("*");
-        config.addAllowedMethod("*");
+        // 显式收敛允许的请求头与方法，避免通配符带来的越权面
+        config.addAllowedHeader("Authorization");
+        config.addAllowedHeader("Content-Type");
+        config.addAllowedHeader("Accept");
+        config.addAllowedHeader("Origin");
+        config.addAllowedHeader("X-Requested-With");
+
+        config.addAllowedMethod("GET");
+        config.addAllowedMethod("POST");
+        config.addAllowedMethod("PUT");
+        config.addAllowedMethod("DELETE");
+        config.addAllowedMethod("PATCH");
+        config.addAllowedMethod("OPTIONS");
+        config.addAllowedMethod("HEAD");
+
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

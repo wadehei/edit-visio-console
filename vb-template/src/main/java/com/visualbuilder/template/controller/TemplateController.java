@@ -1,5 +1,6 @@
 package com.visualbuilder.template.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -13,7 +14,9 @@ import com.visualbuilder.template.service.TemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,6 +24,7 @@ import java.util.List;
 @Tag(name = "模板管理")
 @RestController
 @RequestMapping("/api/v1/templates")
+@Validated
 @RequiredArgsConstructor
 public class TemplateController {
 
@@ -30,8 +34,12 @@ public class TemplateController {
     @GetMapping
     public R<List<Template>> list(
             @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String tag) {
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "关键字最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String keyword,
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "标签最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String tag) {
         return R.ok(templateService.listTemplates(categoryId, keyword, tag));
     }
 

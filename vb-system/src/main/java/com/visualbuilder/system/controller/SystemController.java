@@ -1,5 +1,6 @@
 package com.visualbuilder.system.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
@@ -12,7 +13,9 @@ import com.visualbuilder.system.entity.SysLog;
 import com.visualbuilder.system.service.SystemService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +23,7 @@ import java.util.List;
 @Tag(name = "系统管理")
 @RestController
 @RequestMapping("/api/v1/system")
+@Validated
 @RequiredArgsConstructor
 public class SystemController {
 
@@ -37,8 +41,12 @@ public class SystemController {
     @OpLog(module = "系统管理", action = "更新系统配置")
     @PutMapping("/configs/{configKey}")
     public R<Void> updateConfig(
-            @PathVariable String configKey,
-            @RequestParam String configValue) {
+            @PathVariable
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "配置键最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String configKey,
+            @RequestParam
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "配置值最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String configValue) {
         systemService.updateConfig(configKey, configValue);
         return R.ok();
     }
@@ -47,7 +55,9 @@ public class SystemController {
     @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/logs")
     public R<PageResult<SysLog>> logs(
-            @RequestParam(required = false) String module,
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "模块名最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String module,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
         return R.ok(systemService.getLogs(module, page, pageSize));
@@ -57,7 +67,9 @@ public class SystemController {
     @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/login-logs")
     public R<PageResult<LoginLog>> loginLogs(
-            @RequestParam(required = false) String username,
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "用户名最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String username,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
         return R.ok(systemService.getLoginLogs(username, page, pageSize));

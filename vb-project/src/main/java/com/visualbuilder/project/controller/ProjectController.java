@@ -1,5 +1,6 @@
 package com.visualbuilder.project.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -11,7 +12,9 @@ import com.visualbuilder.project.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +23,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/projects")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "项目管理")
 public class ProjectController {
 
@@ -43,7 +47,9 @@ public class ProjectController {
     public R<PageResult<ProjectVO>> listProjects(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "关键字最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String keyword,
             @RequestParam(required = false) Integer status) {
         return R.ok(projectService.listProjects(page, pageSize, keyword, status));
     }
@@ -67,7 +73,10 @@ public class ProjectController {
     @OpLog(module = "项目管理", action = "批量删除项目")
     @Operation(summary = "批量删除项目")
     @DeleteMapping("/batch")
-    public R<Map<String, Object>> batchDelete(@RequestBody List<Long> ids) {
+    public R<Map<String, Object>> batchDelete(
+            @RequestBody
+            @Size(min = 1, max = LimitsConst.MAX_BATCH_SIZE,
+                    message = "单次最多删除 " + LimitsConst.MAX_BATCH_SIZE + " 个项目") List<Long> ids) {
         return R.ok(projectService.batchDeleteProjects(ids));
     }
 

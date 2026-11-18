@@ -1,5 +1,6 @@
 package com.visualbuilder.user.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
@@ -7,18 +8,21 @@ import com.visualbuilder.common.security.annotation.OpLog;
 import com.visualbuilder.common.security.annotation.RequiresRole;
 import com.visualbuilder.user.dto.AdminUserCreateDTO;
 import com.visualbuilder.user.dto.AdminUserUpdateDTO;
+import com.visualbuilder.user.dto.AdminUserVO;
 import com.visualbuilder.user.dto.ResetPasswordDTO;
-import com.visualbuilder.user.entity.SysUser;
 import com.visualbuilder.user.service.AdminUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "管理后台 - 用户管理")
 @RestController
 @RequestMapping("/api/v1/admin/users")
+@Validated
 @RequiredArgsConstructor
 public class AdminUserController {
 
@@ -27,10 +31,12 @@ public class AdminUserController {
     @Operation(summary = "用户列表（分页）")
     @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping
-    public R<PageResult<SysUser>> list(
+    public R<PageResult<AdminUserVO>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "关键字最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String keyword,
             @RequestParam(required = false) Integer status) {
         return R.ok(adminUserService.listUsers(page, pageSize, keyword, status));
     }
@@ -38,10 +44,8 @@ public class AdminUserController {
     @Operation(summary = "用户详情")
     @RequiresRole(SystemRole.SUPER_ADMIN)
     @GetMapping("/{id}")
-    public R<SysUser> detail(@PathVariable Long id) {
-        SysUser user = adminUserService.getById(id);
-        if (user != null) user.setPassword(null);
-        return R.ok(user);
+    public R<AdminUserVO> detail(@PathVariable Long id) {
+        return R.ok(adminUserService.getUserDetail(id));
     }
 
     @Operation(summary = "创建用户")

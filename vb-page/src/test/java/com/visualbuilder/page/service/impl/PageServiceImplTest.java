@@ -211,6 +211,8 @@ class PageServiceImplTest {
         when(pageMapper.selectById(1L)).thenReturn(page);
         SecurityUtils.setContext(2L, "editor");
         when(projectMemberService.hasProjectRole(100L, 2L, "edit")).thenReturn(true);
+        // 乐观锁：WHERE schema_version = 旧值 命中 1 行表示更新成功
+        when(pageMapper.update(any(Page.class), any())).thenReturn(1);
 
         com.visualbuilder.page.dto.PageSchemaDTO dto = new com.visualbuilder.page.dto.PageSchemaDTO();
         dto.setSchema(Map.of("children", List.of()));
@@ -218,7 +220,24 @@ class PageServiceImplTest {
         PageVO result = pageService.saveSchema(1L, dto);
 
         assertNotNull(result);
-        verify(pageMapper).updateById(any(Page.class));
+        verify(pageMapper).update(any(Page.class), any());
+    }
+
+    @Test
+    @DisplayName("保存 Schema - 乐观锁冲突（影响行数为 0）抛出 PAGE_SCHEMA_CONFLICT")
+    void saveSchema_optimisticLockConflict() {
+        Page page = createMockPage(1L, 100L, "测试页面");
+        when(pageMapper.selectById(1L)).thenReturn(page);
+        SecurityUtils.setContext(2L, "editor");
+        when(projectMemberService.hasProjectRole(100L, 2L, "edit")).thenReturn(true);
+        when(pageMapper.update(any(Page.class), any())).thenReturn(0);
+
+        com.visualbuilder.page.dto.PageSchemaDTO dto = new com.visualbuilder.page.dto.PageSchemaDTO();
+        dto.setSchema(Map.of("children", List.of()));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> pageService.saveSchema(1L, dto));
+        assertEquals(ErrorCode.PAGE_SCHEMA_CONFLICT, ex.getCode());
     }
 
     private Page createMockPage(Long pageId, Long projectId, String name) {

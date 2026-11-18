@@ -29,6 +29,7 @@ public class MinioStorageService implements StorageService {
 
     @Override
     public String upload(InputStream stream, String path, String contentType) {
+        validateObjectKey(path);
         try {
             minioClient.putObject(PutObjectArgs.builder()
                     .bucket(storageProperties.getMinio().getBucket())
@@ -46,6 +47,7 @@ public class MinioStorageService implements StorageService {
 
     @Override
     public void delete(String path) {
+        validateObjectKey(path);
         try {
             minioClient.removeObject(RemoveObjectArgs.builder()
                     .bucket(storageProperties.getMinio().getBucket())
@@ -58,6 +60,7 @@ public class MinioStorageService implements StorageService {
 
     @Override
     public String getPresignedUrl(String path, int expireMinutes) {
+        validateObjectKey(path);
         try {
             return minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
@@ -68,6 +71,16 @@ public class MinioStorageService implements StorageService {
         } catch (Exception e) {
             log.error("MinIO预签名URL生成失败: path={}", path, e);
             throw new RuntimeException("获取文件访问链接失败", e);
+        }
+    }
+
+    /**
+     * 对象 key 合法性校验 — 拒绝空值、绝对路径与路径穿越片段，防止越出预期前缀写入或读取对象。
+     */
+    private void validateObjectKey(String path) {
+        if (path == null || path.isBlank()
+                || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
+            throw new IllegalArgumentException("非法对象路径: " + path);
         }
     }
 

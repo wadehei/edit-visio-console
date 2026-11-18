@@ -23,7 +23,9 @@ import com.visualbuilder.publish.mq.PublishTaskProducer;
 import com.visualbuilder.publish.service.PublishService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -91,14 +93,13 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
     /**
      * 在当前事务完成后（提交或回滚）释放锁，并校验锁归属，避免误删他人持有的锁。
      * 若不在事务上下文中，则立即释放。
+     *
+     * <p>释放采用 Lua 脚本「比对 + 删除」原子完成，替代 GET + compare + DEL 三步，
+     * 消除「比对通过后锁过期、再 DEL 误删他人新锁」的竞态。</p>
      */
     private void releaseLockAfterTransaction(String lockKey, String lockValue) {
-        Runnable release = () -> {
-            String current = redisTemplate.opsForValue().get(lockKey);
-            if (lockValue.equals(current)) {
-                redisTemplate.delete(lockKey);
-            }
-        };
+        Runnable release = () -> redisTemplate.execute(
+                RELEASE_LOCK_SCRIPT, java.util.Collections.singletonList(lockKey), lockValue);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -110,6 +111,11 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
             release.run();
         }
     }
+
+    /** 仅当锁值为自己持有时才删除，保证「校验 + 删除」在 Redis 端原子执行。 */
+    private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
 
     private PublishResultVO doPublish(Long projectId, Long pageId, String changelog, Long userId) {
         // 二次检查 PENDING 状态（锁内校验）
@@ -135,15 +141,20 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
         record.setStatus(StatusConst.Publish.PENDING);
         record.setChangelog(truncateChangelog(changelog));
         record.setPublishedBy(userId);
-        this.save(record);
+        try {
+            this.save(record);
+        } catch (DuplicateKeyException e) {
+            // (page_id, version_no) 唯一约束兜底：极端并发下版本号被抢占
+            throw new BusinessException(ErrorCode.PUBLISH_FAILED, "版本号冲突，请稍后重试");
+        }
 
         // 5. 发送异步任务消息 — 必须等事务提交后再发送，否则事务回滚会出现"消息已发、记录不存在"
         PublishTaskMessage msg = new PublishTaskMessage(
-                record.getId(), projectId, pageId, nextVersion);
+                record.getId(), projectId, pageId, nextVersion, 0);
         TransactionUtils.executeAfterCommit(() -> publishTaskProducer.send(msg));
 
-        log.info("发布任务已创建: recordId=" + record.getId()
-                + ", projectId=" + projectId + ", pageId=" + pageId + ", version=" + nextVersion);
+        log.info("发布任务已创建: recordId={}, projectId={}, pageId={}, version={}",
+                record.getId(), projectId, pageId, nextVersion);
 
         return PublishResultVO.builder()
                 .id(record.getId())
@@ -198,30 +209,40 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void completePublish(Long recordId, Long pageId, String accessUrl) {
-        PublishRecord record = this.getById(recordId);
-        if (record == null) return;
-        record.setStatus(StatusConst.Publish.SUCCESS);
-        record.setAccessUrl(accessUrl);
-        record.setPublishedAt(LocalDateTime.now());
-        this.updateById(record);
+        // 直接按 id 更新，避免与执行器中的 getById 重复查询同一条记录
+        boolean updated = this.lambdaUpdate()
+                .eq(PublishRecord::getId, recordId)
+                .set(PublishRecord::getStatus, StatusConst.Publish.SUCCESS)
+                .set(PublishRecord::getAccessUrl, accessUrl)
+                .set(PublishRecord::getPublishedAt, LocalDateTime.now())
+                .update();
+        if (!updated) {
+            log.info("发布记录不存在，跳过发布成功标记: recordId={}", recordId);
+            return;
+        }
 
         // 与发布记录状态在同一事务内更新页面状态，避免「记录已成功、页面仍编辑中」的跨事务不一致
         pageService.lambdaUpdate()
                 .eq(com.visualbuilder.page.entity.Page::getId, pageId)
                 .set(com.visualbuilder.page.entity.Page::getStatus, StatusConst.Page.PUBLISHED)
                 .update();
-        log.info("发布成功: recordId=" + recordId + ", accessUrl=" + accessUrl);
+        log.info("发布成功: recordId={}, accessUrl={}", recordId, accessUrl);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void markFailed(Long recordId, String reason) {
-        PublishRecord record = this.getById(recordId);
-        if (record == null) return;
-        record.setStatus(StatusConst.Publish.FAILED);
-        record.setFailedReason(reason);
-        record.setPublishedAt(LocalDateTime.now());
-        this.updateById(record);
-        log.info("发布失败: recordId=" + recordId + ", reason=" + reason);
+        // 直接按 id 更新，省去一次 getById 查询
+        boolean updated = this.lambdaUpdate()
+                .eq(PublishRecord::getId, recordId)
+                .set(PublishRecord::getStatus, StatusConst.Publish.FAILED)
+                .set(PublishRecord::getFailedReason, reason)
+                .set(PublishRecord::getPublishedAt, LocalDateTime.now())
+                .update();
+        if (!updated) {
+            log.info("发布记录不存在，跳过失败标记: recordId={}", recordId);
+            return;
+        }
+        log.info("发布失败: recordId={}, reason={}", recordId, reason);
     }
 }

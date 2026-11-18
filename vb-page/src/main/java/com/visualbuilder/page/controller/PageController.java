@@ -1,5 +1,6 @@
 package com.visualbuilder.page.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -12,7 +13,9 @@ import com.visualbuilder.page.service.PageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,6 +24,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/pages")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "页面管理")
 public class PageController {
 
@@ -46,7 +50,10 @@ public class PageController {
     public R<PageResult<PageVO>> listPages(@PathVariable Long projectId,
                                            @RequestParam(defaultValue = "1") int page,
                                            @RequestParam(defaultValue = "20") int pageSize,
-                                           @RequestParam(required = false) String keyword) {
+                                           @RequestParam(required = false)
+                                           @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                                                   message = "关键字最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符")
+                                           String keyword) {
         return R.ok(pageService.listPages(projectId, page, pageSize, keyword));
     }
 
@@ -81,7 +88,10 @@ public class PageController {
     @Operation(summary = "批量删除页面")
     @DeleteMapping("/batch")
     public R<Map<String, Object>> batchDeletePages(@PathVariable Long projectId,
-                                                   @RequestBody List<Long> ids) {
+                                                   @RequestBody
+                                                   @Size(min = 1, max = LimitsConst.MAX_BATCH_SIZE,
+                                                           message = "单次最多删除 " + LimitsConst.MAX_BATCH_SIZE + " 个页面")
+                                                   List<Long> ids) {
         return R.ok(pageService.batchDeletePages(ids));
     }
 

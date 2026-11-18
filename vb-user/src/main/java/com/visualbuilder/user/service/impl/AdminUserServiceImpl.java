@@ -12,6 +12,7 @@ import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.user.dto.AdminUserCreateDTO;
 import com.visualbuilder.user.dto.AdminUserUpdateDTO;
+import com.visualbuilder.user.dto.AdminUserVO;
 import com.visualbuilder.user.entity.SysUser;
 import com.visualbuilder.user.entity.SysUserRole;
 import com.visualbuilder.user.mapper.SysUserMapper;
@@ -28,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -44,7 +47,7 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
     private long disabledFlagTtlSeconds;
 
     @Override
-    public PageResult<SysUser> listUsers(int page, int pageSize, String keyword, Integer status) {
+    public PageResult<AdminUserVO> listUsers(int page, int pageSize, String keyword, Integer status) {
         int pn = PageUtils.normalizePage(page);
         int ps = PageUtils.normalizePageSize(pageSize);
         Page<SysUser> pageParam = new Page<>(pn, ps);
@@ -53,9 +56,20 @@ public class AdminUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser
                 .eq(status != null, SysUser::getStatus, status)
                 .orderByDesc(SysUser::getCreatedTime);
         Page<SysUser> result = this.page(pageParam, wrapper);
-        // 清除密码字段，避免泄露
-        result.getRecords().forEach(u -> u.setPassword(null));
-        return PageResult.of(result.getRecords(), result.getTotal(), pn, ps);
+        // 转换为脱敏 VO，避免实体内部字段外泄
+        List<AdminUserVO> records = result.getRecords().stream()
+                .map(AdminUserVO::of)
+                .collect(Collectors.toList());
+        return PageResult.of(records, result.getTotal(), pn, ps);
+    }
+
+    @Override
+    public AdminUserVO getUserDetail(Long userId) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND, "用户不存在");
+        }
+        return AdminUserVO.of(user);
     }
 
     @Override

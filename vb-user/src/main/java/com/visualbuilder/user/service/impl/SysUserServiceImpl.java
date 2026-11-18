@@ -154,6 +154,8 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
 
         String accessToken = jwtUtils.generateAccessToken(user.getId(), user.getUsername(), claims);
         String refreshToken = jwtUtils.generateRefreshToken(user.getId());
+        // 记录本次签发的刷新令牌，供后续吊销/轮换校验
+        storeRefreshToken(user.getId(), refreshToken);
 
         // 更新登录信息
         user.setLoginIp(IpUtils.getClientIp());
@@ -254,11 +256,23 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
         if (!jwtUtils.validateToken(refreshToken)) {
             throw new BusinessException(ErrorCode.TOKEN_INVALID, "Refresh Token 无效或已过期");
         }
+        // 类型校验：拒绝用访问令牌冒充刷新令牌换取新令牌
+        if (!"refresh".equals(jwtUtils.getTokenType(refreshToken))) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID, "Refresh Token 无效或已过期");
+        }
 
         Long userId = jwtUtils.getUserId(refreshToken);
         SysUser user = this.getById(userId);
         if (user == null || user.getStatus() != StatusConst.User.NORMAL) {
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "用户不存在或已禁用");
+        }
+
+        // 吊销校验：Redis 中记录的 jti 必须与本次提交的一致，
+        // 否则说明该刷新令牌已被登出吊销或已被后续刷新轮换替换。
+        String storedJti = redisTemplate.opsForValue().get(RedisKeyConst.refreshToken(userId));
+        String presentedJti = jwtUtils.getJti(refreshToken);
+        if (!StringUtils.hasText(storedJti) || !storedJti.equals(presentedJti)) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID, "Refresh Token 已失效，请重新登录");
         }
 
         List<String> roleKeys = baseMapper.selectRoleKeysByUserId(userId);
@@ -270,6 +284,8 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
 
         String newAccessToken = jwtUtils.generateAccessToken(userId, user.getUsername(), claims);
         String newRefreshToken = jwtUtils.generateRefreshToken(userId);
+        // 刷新即轮换：写回新的 jti，旧刷新令牌立即失效
+        storeRefreshToken(userId, newRefreshToken);
 
         String role = roleKeys.isEmpty() ? "USER" : roleKeys.get(0);
         UserInfoVO userInfo = UserConverter.toUserInfoVO(user, permissions);
@@ -282,6 +298,19 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
                 .expiresIn(jwtUtils.getAccessTokenExpire())
                 .user(userInfo)
                 .build();
+    }
+
+    /**
+     * 记录用户当前有效的刷新令牌 jti，TTL 与刷新令牌有效期一致。
+     * 登出时删除该键即可即时吊销；刷新时覆盖写入即完成令牌轮换。
+     */
+    private void storeRefreshToken(Long userId, String refreshToken) {
+        String jti = jwtUtils.getJti(refreshToken);
+        if (!StringUtils.hasText(jti)) {
+            return;
+        }
+        redisTemplate.opsForValue().set(RedisKeyConst.refreshToken(userId), jti,
+                Duration.ofSeconds(jwtUtils.getRefreshTokenExpire()));
     }
 
     /**

@@ -33,6 +33,15 @@ public class SecurityConfigValidator {
     @Value("${spring.data.redis.password:}")
     private String redisPassword;
 
+    @Value("${storage.type:local}")
+    private String storageType;
+
+    @Value("${storage.minio.access-key:}")
+    private String minioAccessKey;
+
+    @Value("${storage.minio.secret-key:}")
+    private String minioSecretKey;
+
     public SecurityConfigValidator(Environment environment) {
         this.environment = environment;
     }
@@ -58,6 +67,19 @@ public class SecurityConfigValidator {
 
         if (redisPassword == null || redisPassword.isBlank()) {
             log.warn("生产环境 Redis 密码未配置，建议使用 AUTH 认证");
+        }
+
+        // 生产环境使用 MinIO 时，强制校验对象存储凭证，避免用默认弱口令上线
+        if ("minio".equalsIgnoreCase(storageType)) {
+            if (minioAccessKey == null || minioAccessKey.isBlank()
+                    || minioSecretKey == null || minioSecretKey.isBlank()) {
+                throw new IllegalStateException(
+                        "生产环境使用 MinIO 存储时必须配置 MINIO_ACCESS_KEY / MINIO_SECRET_KEY");
+            }
+            if (minioAccessKey.contains("minioadmin") || minioSecretKey.contains("minioadmin")) {
+                throw new IllegalStateException(
+                        "生产环境 MinIO 使用了默认弱凭证（minioadmin）！请立即更换");
+            }
         }
 
         log.info("✅ 生产环境安全配置校验通过");

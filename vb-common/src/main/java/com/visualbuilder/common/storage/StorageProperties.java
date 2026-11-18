@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "storage")
 public class StorageProperties {
-    private String type = "minio";
+    /** 存储类型：local / minio；缺省与 LocalStorageService 的 matchIfMissing 保持一致 */
+    private String type = "local";
     private MinioProperties minio = new MinioProperties();
 
     @Data

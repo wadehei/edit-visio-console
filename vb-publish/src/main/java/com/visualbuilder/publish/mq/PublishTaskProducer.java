@@ -26,11 +26,11 @@ public class PublishTaskProducer {
                     RabbitConfig.PUBLISH_EXCHANGE,
                     RabbitConfig.PUBLISH_ROUTING_KEY,
                     message);
-            log.info("发布任务已发送: recordId=" + message.getRecordId()
-                    + ", pageId=" + message.getPageId());
+            log.info("发布任务已发送: recordId={}, pageId={}",
+                    message.getRecordId(), message.getPageId());
         } catch (Exception e) {
-            log.error("发布任务发送失败: recordId=" + message.getRecordId()
-                    + ", error=" + e.getMessage(), e);
+            log.error("发布任务发送失败: recordId={}, error={}",
+                    message.getRecordId(), e.getMessage(), e);
             throw new RuntimeException("发布任务发送失败，请稍后重试", e);
         }
     }

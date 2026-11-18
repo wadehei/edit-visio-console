@@ -174,7 +174,9 @@ CREATE TABLE biz_project (
   KEY idx_user_id (user_id),
   KEY idx_project_status (status),
   KEY idx_project_created_time (created_time),
-  KEY idx_project_user_deleted (user_id, deleted)
+  KEY idx_project_user_deleted (user_id, deleted),
+  -- 覆盖「按用户过滤 + updated_time 排序」的项目列表查询
+  KEY idx_project_user_deleted_updated (user_id, deleted, updated_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='项目表';
 
 -- 2.2 页面表
@@ -200,7 +202,9 @@ CREATE TABLE biz_page (
   KEY idx_page_path (page_path),
   KEY idx_page_status (status),
   KEY idx_page_project_status (project_id, status, deleted),
-  KEY idx_page_project_user_deleted (project_id, user_id, deleted)
+  KEY idx_page_project_user_deleted (project_id, user_id, deleted),
+  -- 覆盖「按项目过滤 + updated_time 排序」的页面列表查询
+  KEY idx_page_project_deleted_updated (project_id, deleted, updated_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='页面表';
 
 -- 2.3 页面版本表
@@ -252,7 +256,9 @@ CREATE TABLE biz_component (
   PRIMARY KEY (id),
   KEY idx_component_type (type),
   KEY idx_component_status (status),
-  KEY idx_component_category_status (category_id, status)
+  KEY idx_component_category_status (category_id, status),
+  -- 覆盖「按分类 + 状态过滤 + sort_order 排序」的组件列表查询
+  KEY idx_component_category_status_sort (category_id, status, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='组件表';
 
 -- 2.6 模板分类表
@@ -289,7 +295,9 @@ CREATE TABLE biz_template (
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_category_id (category_id),
-  KEY idx_template_status_usecount (status, use_count)
+  KEY idx_template_status_usecount (status, use_count),
+  -- 覆盖「按分类 + 状态过滤 + use_count 排序」的模板列表查询
+  KEY idx_template_category_status_usecount (category_id, status, use_count)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='模板表';
 
 -- 2.8 项目成员表
@@ -318,7 +326,8 @@ CREATE TABLE biz_publish_record (
   published_at    DATETIME        DEFAULT NULL,
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_page_id (page_id),
+  -- 同一页面的版本号唯一：既做并发发布的防重兜底，又服务「取最新版本」的 ORDER BY version_no DESC LIMIT 1
+  UNIQUE KEY uk_publish_page_version (page_id, version_no),
   KEY idx_publish_project_id (project_id),
   KEY idx_publish_project_published (project_id, published_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='发布记录表';

@@ -1,5 +1,6 @@
 package com.visualbuilder.resource.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
@@ -9,7 +10,9 @@ import com.visualbuilder.resource.entity.Resource;
 import com.visualbuilder.resource.service.ResourceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,6 +22,7 @@ import java.util.Map;
 @Tag(name = "资源管理")
 @RestController
 @RequestMapping("/api/v1/resources")
+@Validated
 @RequiredArgsConstructor
 public class ResourceController {
 
@@ -55,7 +59,10 @@ public class ResourceController {
     @OpLog(module = "资源管理", action = "批量删除资源")
     @Operation(summary = "批量删除资源")
     @DeleteMapping("/batch")
-    public R<Map<String, Object>> batchDelete(@RequestBody java.util.List<Long> ids) {
+    public R<Map<String, Object>> batchDelete(
+            @RequestBody
+            @Size(min = 1, max = LimitsConst.MAX_BATCH_SIZE,
+                    message = "单次最多删除 " + LimitsConst.MAX_BATCH_SIZE + " 个资源") List<Long> ids) {
         return R.ok(resourceService.batchDelete(ids));
     }
 

@@ -1,0 +1,23 @@
+# 构建产物
+target/
+**/target/
+
+# 版本控制与 IDE
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+
+# 本地运行时数据
+uploads/
+logs/
+*.log
+
+# 文档与编排文件（无需进入镜像）
+*.md
+Dockerfile
+docker-compose*.yml
+
+# 测试与临时文件
+*.exec

@@ -1,5 +1,6 @@
 package com.visualbuilder.user.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.SystemRole;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
@@ -12,7 +13,9 @@ import com.visualbuilder.user.service.AdminRoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +23,7 @@ import java.util.List;
 @Tag(name = "管理后台 - 角色管理")
 @RestController
 @RequestMapping("/api/v1/admin/roles")
+@Validated
 @RequiredArgsConstructor
 public class AdminRoleController {
 
@@ -31,7 +35,9 @@ public class AdminRoleController {
     public R<PageResult<SysRole>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "关键字最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String keyword) {
         return R.ok(adminRoleService.listRoles(page, pageSize, keyword));
     }
 
@@ -73,7 +79,11 @@ public class AdminRoleController {
     @RequiresRole(SystemRole.SUPER_ADMIN)
     @OpLog(module = "角色管理", action = "分配权限")
     @PutMapping("/{id}/permissions")
-    public R<Void> assignPermissions(@PathVariable Long id, @RequestBody List<Long> permissionIds) {
+    public R<Void> assignPermissions(@PathVariable Long id,
+                                     @RequestBody
+                                     @Size(max = LimitsConst.MAX_BATCH_SIZE,
+                                             message = "单次最多分配 " + LimitsConst.MAX_BATCH_SIZE + " 项权限")
+                                     List<Long> permissionIds) {
         adminRoleService.assignPermissions(id, permissionIds);
         return R.ok();
     }

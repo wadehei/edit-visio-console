@@ -11,9 +11,12 @@ public final class PageUtils {
     private PageUtils() {
     }
 
-    /** 页码归一化：null 或小于 1 一律归为第 1 页 */
+    /** 页码归一化：null 或小于 1 归为第 1 页；超过上限则钳到最大页码，避免深分页超大 offset */
     public static int normalizePage(Integer page) {
-        return (page == null || page < 1) ? 1 : page;
+        if (page == null || page < 1) {
+            return 1;
+        }
+        return Math.min(page, LimitsConst.MAX_PAGE_NUM);
     }
 
     /** 每页条数归一化：null 或小于 1 取默认值，超过上限则截断 */

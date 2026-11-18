@@ -10,5 +10,6 @@ public class UploadResultVO {
     private String url;
     private String fileName;
     private String resourceType;
-    private Long fileSize;
+    /** 文件字节大小；使用基本类型以免被全局 Long→String 序列化影响前端数值展示 */
+    private long fileSize;
 }

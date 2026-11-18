@@ -45,6 +45,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(token) && jwtUtils.validateToken(token)) {
             Claims claims = jwtUtils.parseToken(token);
+
+            // 令牌类型校验：拒绝用 Refresh Token 冒充访问令牌调用业务接口
+            String tokenType = claims.get("tokenType", String.class);
+            if (!"access".equals(tokenType)) {
+                writeError(response, HttpServletResponse.SC_UNAUTHORIZED,
+                        ErrorCode.UNAUTHORIZED, "Token 类型不合法，请使用访问令牌");
+                return;
+            }
+
             String jti = claims.getId();
             Long userId = Long.parseLong(claims.getSubject());
 

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
@@ -54,7 +55,8 @@ public class SystemServiceImpl extends BaseServiceImpl<SysConfigMapper, SysConfi
             log.warn("读取系统配置缓存失败: {}", e.getMessage());
         }
 
-        List<SysConfig> configs = this.list();
+        List<SysConfig> configs = this.list(new LambdaQueryWrapper<SysConfig>()
+                .last("LIMIT " + LimitsConst.MAX_LIST_SIZE));
 
         // 写入缓存
         try {

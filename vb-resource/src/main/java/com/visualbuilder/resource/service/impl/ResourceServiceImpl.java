@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Service
@@ -56,6 +57,10 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
     /** Magic bytes 比对窗口：需覆盖到偏移 12，以容纳 RIFF....WEBP 与 ....ftyp 的结构校验。 */
     private static final int MAGIC_HEADER_SIZE = 12;
+
+    /** 目录标识白名单：仅允许字母/数字/下划线/中划线，防止路径穿越污染存储 key。 */
+    private static final java.util.regex.Pattern FOLDER_ID_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
     @Value("${business.resource.allowed-image-types:jpg,jpeg,png,gif,webp,svg}")
     private String allowedImageTypes;
@@ -95,7 +100,6 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     private static final byte[] MP4_BOX_TYPE = "ftyp".getBytes(StandardCharsets.US_ASCII);
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public UploadResultVO upload(MultipartFile file, String folderId) {
         Long userId = SecurityUtils.requireCurrentUserId();
         if (file == null || file.isEmpty()) {
@@ -122,7 +126,18 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
                 ? originalFilename.substring(originalFilename.lastIndexOf("."))
                 : "";
         String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String storagePath = (folderId != null ? folderId + "/" : "default/") + datePath + "/" + UUID.randomUUID() + ext;
+        // 目录标识来自请求参数，必须白名单校验后再拼接存储 key，防止路径穿越污染存储路径
+        String folder = "default";
+        if (folderId != null && !folderId.isBlank()) {
+            if (!FOLDER_ID_PATTERN.matcher(folderId).matches()) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "目录标识非法，仅允许字母、数字、下划线、中划线");
+            }
+            folder = folderId;
+        }
+        String storagePath = folder + "/" + datePath + "/" + UUID.randomUUID() + ext;
+
+        // 存储 IO 放在事务之外：远程对象存储上传可能耗时数百毫秒到数秒，
+        // 若包在 @Transactional 内会长时间占用数据库连接，放大连接池压力。
         String url;
         try (InputStream is = file.getInputStream()) {
             url = storageService.upload(is, storagePath, contentType);
@@ -131,16 +146,8 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
             throw new BusinessException(ErrorCode.STORAGE_ERROR, "文件上传失败");
         }
 
-        // 存储已写入但记录尚未落库：注册事务回滚补偿，避免留下「有文件、无记录」的孤儿文件
-        final String uploadedPath = storagePath;
-        TransactionUtils.executeOnRollback(() -> {
-            try {
-                storageService.delete(uploadedPath);
-            } catch (Exception ex) {
-                log.warn("回滚清理存储文件失败: path={}, error={}", uploadedPath, ex.getMessage());
-            }
-        });
-
+        // 落库为单条 INSERT，本身即原子操作，无需事务包覆。
+        // 失败时手动清理已写入的存储文件，避免留下「有文件、无记录」的孤儿文件。
         Resource resource = new Resource();
         resource.setUserId(userId);
         resource.setResourceType(resourceType);
@@ -150,7 +157,12 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         resource.setFileSize(file.getSize());
         resource.setMimeType(contentType);
         resource.setGroupName(folderId);
-        this.save(resource);
+        try {
+            this.save(resource);
+        } catch (RuntimeException e) {
+            deleteStorageQuietly(storagePath, "上传落库失败");
+            throw e;
+        }
 
         // 列表缓存失效，避免新上传资源在缓存中不可见
         evictResourceListCache(userId);
@@ -162,6 +174,15 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
                 .resourceType(resourceType)
                 .fileSize(file.getSize())
                 .build();
+    }
+
+    /** 尽力清理存储文件，失败仅告警——用于上传落库失败后的补偿。 */
+    private void deleteStorageQuietly(String storagePath, String reason) {
+        try {
+            storageService.delete(storagePath);
+        } catch (Exception ex) {
+            log.warn("存储文件清理失败[{}]: path={}, error={}", reason, storagePath, ex.getMessage());
+        }
     }
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -462,15 +483,25 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
 
         PageResult<Resource> pageResult = PageResult.of(result.getRecords(), result.getTotal(), safePage, safePageSize);
 
-        // 写入缓存
+        // 写入缓存（TTL 加随机抖动，避免大量 key 在同一时刻集中过期）
         try {
             redisTemplate.opsForValue().set(cacheKey,
-                    objectMapper.writeValueAsString(pageResult), RESOURCE_CACHE_TTL);
+                    objectMapper.writeValueAsString(pageResult), jitteredCacheTtl());
         } catch (Exception e) {
             log.warn("写入资源列表缓存失败: {}", e.getMessage());
         }
 
         return pageResult;
+    }
+
+    /**
+     * 资源列表缓存 TTL = 基础 5 分钟 + 0~60 秒随机抖动。
+     *
+     * <p>资源列表缓存 key 维度多（用户/页码/页大小/类型/分组），若不抖动，
+     * 批量写入的 key 可能在同一时刻集中过期，形成缓存雪崩。</p>
+     */
+    private static Duration jitteredCacheTtl() {
+        return RESOURCE_CACHE_TTL.plusSeconds(ThreadLocalRandom.current().nextLong(60));
     }
 
     /**

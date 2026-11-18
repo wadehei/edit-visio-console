@@ -15,6 +15,9 @@ public final class LimitsConst {
     /** 分页接口单页最大条数 — 限制响应体积与缓存 key 基数 */
     public static final int MAX_PAGE_SIZE = 100;
 
+    /** 分页接口最大页码 — 钳制深分页，避免超大 offset 拖垮数据库 */
+    public static final int MAX_PAGE_NUM = 10000;
+
     /** 无分页列表接口的单次最大返回条数 — 避免全表返回 */
     public static final int MAX_LIST_SIZE = 500;
 
