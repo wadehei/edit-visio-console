@@ -16,6 +16,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.Arrays;
+import java.util.regex.Pattern;
 
 /**
  * 操作日志 AOP 切面 — 拦截 @OpLog 注解方法，发布 OpLogEvent。
@@ -27,6 +28,14 @@ import java.util.Arrays;
 public class OpLogAspect {
 
     private final ApplicationEventPublisher eventPublisher;
+
+    /**
+     * 入参中的凭证字段 — 形如 {@code password=xxx}、{@code newPassword=xxx}、{@code refreshToken=xxx}。
+     * 匹配到就整体替换为 {@code 字段名=***}，避免明文密码/令牌落库。
+     */
+    private static final Pattern CREDENTIAL_FIELD = Pattern.compile(
+            "([\\w]*(?:password|passwd|pwd|token|secret|credential)[\\w]*)\\s*=\\s*[^,)\\]}]+",
+            Pattern.CASE_INSENSITIVE);
 
     @Around("@annotation(opLog)")
     public Object around(ProceedingJoinPoint point, OpLog opLog) throws Throwable {
@@ -68,11 +77,11 @@ public class OpLogAspect {
             ipAddress = getClientIp(request);
         }
 
-        // 请求参数（截断避免过长）
+        // 请求参数（先脱敏凭证，再截断避免过长）
         String params = "";
         try {
             Object[] args = point.getArgs();
-            params = Arrays.toString(args);
+            params = maskCredentials(Arrays.toString(args));
             if (params.length() > 500) {
                 params = params.substring(0, 500) + "...";
             }
@@ -95,6 +104,14 @@ public class OpLogAspect {
         eventPublisher.publishEvent(event);
         log.debug("操作日志: module={}, action={}, userId={}, cost={}ms",
                 opLog.module(), opLog.action(), userId, costTime);
+    }
+
+    /** 将入参字符串中的凭证字段值替换为 {@code ***}。 */
+    private static String maskCredentials(String params) {
+        if (params == null || params.isEmpty()) {
+            return params;
+        }
+        return CREDENTIAL_FIELD.matcher(params).replaceAll("$1=***");
     }
 
     private String getClientIp(HttpServletRequest request) {

@@ -19,15 +19,15 @@ import com.visualbuilder.resource.service.ResourceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -50,7 +50,12 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     private final ObjectMapper objectMapper;
 
     private static final String RESOURCE_CACHE_PREFIX = "resource:list:";
+    /** 列表缓存版本号 key 前缀：写操作 INCR 该值即可让旧缓存整体失效，免去按前缀 SCAN 遍历键空间。 */
+    private static final String RESOURCE_CACHE_VERSION_PREFIX = "resource:list:ver:";
     private static final Duration RESOURCE_CACHE_TTL = Duration.ofMinutes(5);
+
+    /** Magic bytes 比对窗口：需覆盖到偏移 12，以容纳 RIFF....WEBP 与 ....ftyp 的结构校验。 */
+    private static final int MAGIC_HEADER_SIZE = 12;
 
     @Value("${business.resource.allowed-image-types:jpg,jpeg,png,gif,webp,svg}")
     private String allowedImageTypes;
@@ -67,7 +72,12 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     @Value("${business.resource.allowed-audio-types:mp3,wav,ogg,aac}")
     private String allowedAudioTypes;
 
-    /** 文件 Magic Bytes 映射 — 用于校验真实文件类型，防止伪造 Content-Type */
+    /**
+     * 文件 Magic Bytes 映射 — 用于校验真实文件类型，防止伪造 Content-Type。
+     *
+     * <p>这里只登记「前缀即全部签名」的格式；需要按偏移比对的结构化格式（{@code webp}、{@code mp4}）
+     * 在 {@link #validateMagicBytes} 内单独校验，以免用弱前缀冒充强签名。</p>
+     */
     private static final Map<String, byte[]> MAGIC_BYTES_MAP = new LinkedHashMap<>();
     static {
         MAGIC_BYTES_MAP.put("png",  new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
@@ -75,10 +85,14 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         MAGIC_BYTES_MAP.put("jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
         MAGIC_BYTES_MAP.put("gif",  new byte[]{0x47, 0x49, 0x46, 0x38});
         MAGIC_BYTES_MAP.put("bmp",  new byte[]{0x42, 0x4D});
-        MAGIC_BYTES_MAP.put("webp", new byte[]{0x52, 0x49, 0x46, 0x46}); // RIFF header, further checked at offset 8
-        MAGIC_BYTES_MAP.put("mp4",  new byte[]{0x00, 0x00, 0x00}); // ftyp box — checked with offset pattern
+        MAGIC_BYTES_MAP.put("webp", new byte[]{0x52, 0x49, 0x46, 0x46}); // RIFF 前缀，完整校验见偏移 8 的 WEBP
         MAGIC_BYTES_MAP.put("pdf",  new byte[]{0x25, 0x50, 0x44, 0x46}); // %PDF
     }
+
+    /** webp 容器类型标识：RIFF 之后偏移 8 起的 4 字节，用于与其它 RIFF 容器（wav/avi）区分。 */
+    private static final byte[] WEBP_FORM_TYPE = "WEBP".getBytes(StandardCharsets.US_ASCII);
+    /** mp4 的 ISO Base Media File Format box 标识：位于偏移 4（前 4 字节为 box 长度）。 */
+    private static final byte[] MP4_BOX_TYPE = "ftyp".getBytes(StandardCharsets.US_ASCII);
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -265,17 +279,21 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作此资源");
         }
 
-        // 永久删除：先删存储文件，再删数据库记录
-        try {
-            storageService.delete(resource.getStoragePath());
-        } catch (Exception e) {
-            log.warn("永久删除-存储文件清理失败: resourceId={}, error={}", resourceId, e.getMessage());
-        }
-
+        // 永久删除：先删数据库记录（事务内），提交成功后再清理存储文件，
+        // 避免「文件已删、记录仍在」产生坏引用；文件清理失败仅告警，不影响记录删除结果。
         int rows = baseMapper.permanentDeleteById(resourceId);
         if (rows == 0) {
             throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "资源不存在");
         }
+        String storagePath = resource.getStoragePath();
+        TransactionUtils.executeAfterCommit(() -> {
+            try {
+                storageService.delete(storagePath);
+            } catch (Exception e) {
+                log.warn("永久删除-存储文件清理失败(需人工补偿): resourceId={}, path={}, error={}",
+                        resourceId, storagePath, e.getMessage());
+            }
+        });
         log.info("永久删除资源: resourceId={}", resourceId);
     }
 
@@ -330,25 +348,44 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     }
 
     /**
-     * 校验文件 Magic Bytes — 读取文件头字节与声明类型比对，防止伪造 Content-Type / 扩展名
+     * 校验文件 Magic Bytes — 读取文件头字节与声明类型比对，防止伪造 Content-Type / 扩展名。
+     *
+     * <p>除前缀签名外，对容器型格式做结构校验：</p>
+     * <ul>
+     *   <li>{@code webp}：RIFF 前缀之外，还要求偏移 8 起的 4 字节为 {@code WEBP}，
+     *       以与 {@code wav}/{@code avi} 等其它 RIFF 容器区分。</li>
+     *   <li>{@code mp4}：要求偏移 4 起的 4 字节为 {@code ftyp}（ISO BMFF 的 box 标识）。
+     *       旧实现只看前 3 字节为 {@code 0x00}，几乎所有二进制文件都能满足，等同于没有校验。</li>
+     * </ul>
      */
     private void validateMagicBytes(String resourceType, String extension, MultipartFile file) {
         if (extension.isEmpty() || "file".equals(resourceType)) return;
-        if (!MAGIC_BYTES_MAP.containsKey(extension)) return;
 
         byte[] expected = MAGIC_BYTES_MAP.get(extension);
+        boolean webp = "webp".equals(extension);
+        boolean mp4 = "mp4".equals(extension);
+        if (expected == null && !webp && !mp4) return;
+
+        // 需读取的字节数：webp/mp4 要看到偏移 12 的结构标识，其余只需前缀长度
+        int required = webp || mp4 ? MAGIC_HEADER_SIZE : expected.length;
         try (InputStream is = file.getInputStream()) {
-            byte[] header = new byte[expected.length];
-            int read = is.read(header);
-            if (read < expected.length) {
+            byte[] header = new byte[MAGIC_HEADER_SIZE];
+            int read = readUpTo(is, header);
+            if (read < required) {
                 throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
-                        "文件内容不完整，无法验证文件类型");
+                        "文件内容不足 " + required + " 字节，无法验证文件类型");
             }
-            for (int i = 0; i < expected.length; i++) {
-                if (header[i] != expected[i]) {
-                    throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
-                            "文件内容与声明类型不匹配: 扩展名=" + extension + "，疑似伪造文件");
-                }
+            if (expected != null && !matchesAt(header, 0, expected)) {
+                throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
+                        "文件内容与声明类型不匹配: 扩展名=" + extension + "，疑似伪造文件");
+            }
+            if (webp && !matchesAt(header, 8, WEBP_FORM_TYPE)) {
+                throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
+                        "文件内容与声明类型不匹配: 扩展名=webp，偏移 8 处缺少 WEBP 标识");
+            }
+            if (mp4 && !matchesAt(header, 4, MP4_BOX_TYPE)) {
+                throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
+                        "文件内容与声明类型不匹配: 扩展名=mp4，偏移 4 处缺少 ftyp box 标识");
             }
         } catch (BusinessException e) {
             throw e;
@@ -356,6 +393,32 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
             throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
                     "文件类型校验失败: " + e.getMessage());
         }
+    }
+
+    /** 比对 {@code header} 自 {@code offset} 起是否与 {@code expected} 逐字节相等。 */
+    private static boolean matchesAt(byte[] header, int offset, byte[] expected) {
+        if (offset + expected.length > header.length) {
+            return false;
+        }
+        for (int i = 0; i < expected.length; i++) {
+            if (header[offset + i] != expected[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** {@link InputStream#read} 不保证一次填满缓冲区，循环读取直到填满或流结束，返回实际字节数。 */
+    private static int readUpTo(InputStream is, byte[] buffer) throws IOException {
+        int total = 0;
+        while (total < buffer.length) {
+            int n = is.read(buffer, total, buffer.length - total);
+            if (n < 0) {
+                break;
+            }
+            total += n;
+        }
+        return total;
     }
 
     @Override
@@ -366,8 +429,9 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         int safePage = Math.max(page, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), LimitsConst.MAX_PAGE_SIZE);
 
-        // 缓存 key 包含 userId，防止跨用户数据泄露
+        // 缓存 key 包含 userId（防止跨用户数据泄露）与当前版本号（写操作后整体失效）
         String cacheKey = RESOURCE_CACHE_PREFIX + currentUserId
+                + ":v" + currentCacheVersion(currentUserId)
                 + ":" + safePage + ":" + safePageSize
                 + ":" + (resourceType != null ? resourceType : "_")
                 + ":" + (groupName != null ? groupName : "_");
@@ -410,26 +474,41 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     }
 
     /**
-     * 按前缀清理指定用户的资源列表缓存（SCAN 非阻塞遍历，避免 KEYS 阻塞 Redis）。
-     * 写操作（上传/删除/批量删除/恢复）后调用，保证列表数据一致性。
+     * 读取当前用户的列表缓存版本号，缺省（无键或读取失败）视为 0。
+     * 读取失败时降级为 0 仍可命中缓存，避免缓存故障放大为接口故障。
+     */
+    private long currentCacheVersion(Long userId) {
+        try {
+            String version = redisTemplate.opsForValue().get(versionKey(userId));
+            return version == null ? 0L : Long.parseLong(version);
+        } catch (Exception e) {
+            log.warn("读取资源列表缓存版本失败，降级为 0: userId={}, error={}", userId, e.getMessage());
+            return 0L;
+        }
+    }
+
+    /**
+     * 让指定用户的资源列表缓存整体失效：事务提交后把版本号 +1，
+     * 旧版本缓存不再被命中并随 TTL 自然过期。
+     *
+     * <p>相比按前缀 SCAN 后逐键删除，这里只做一次 O(1) 的 INCR，成本与缓存键数量无关，
+     * 也不会因键空间增大而线性变慢。写操作（上传/删除/批量删除/恢复）后调用。</p>
      */
     private void evictResourceListCache(Long userId) {
         if (userId == null) {
             return;
         }
-        String pattern = RESOURCE_CACHE_PREFIX + userId + ":*";
-        try {
-            Set<String> keys = new java.util.HashSet<>();
-            try (Cursor<String> cursor = redisTemplate.scan(
-                    ScanOptions.scanOptions().match(pattern).count(200).build())) {
-                cursor.forEachRemaining(keys::add);
+        // 事务提交后再失效缓存，避免回滚后旧缓存已被作废
+        TransactionUtils.executeAfterCommit(() -> {
+            try {
+                redisTemplate.opsForValue().increment(versionKey(userId));
+            } catch (Exception e) {
+                log.warn("失效资源列表缓存失败: userId={}, error={}", userId, e.getMessage());
             }
-            if (!keys.isEmpty()) {
-                // 事务提交后再失效缓存，避免回滚后缓存已被清空
-                TransactionUtils.executeAfterCommit(() -> redisTemplate.delete(keys));
-            }
-        } catch (Exception e) {
-            log.warn("清理资源列表缓存失败: userId={}, error={}", userId, e.getMessage());
-        }
+        });
+    }
+
+    private static String versionKey(Long userId) {
+        return RESOURCE_CACHE_VERSION_PREFIX + userId;
     }
 }

@@ -10,14 +10,14 @@ import com.visualbuilder.publish.config.PublishProperties;
 import com.visualbuilder.publish.dto.PublishTaskMessage;
 import com.visualbuilder.publish.render.PageRenderer;
 import com.visualbuilder.publish.service.PublishService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 /**
  * 发布任务执行器 — 核心工作：读取 Schema → 渲染 HTML → 上传存储 → 更新状态。
@@ -35,6 +35,7 @@ public class PublishExecutor {
     private final StorageService storageService;
     private final PublishProperties publishProperties;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     /**
      * 执行发布任务
@@ -70,38 +71,62 @@ public class PublishExecutor {
             }
 
             // 3. 渲染 HTML
-            String html = pageRenderer.render(schemaContent);
+            String html;
+            Timer.Sample renderSample = Timer.start(meterRegistry);
+            try {
+                html = pageRenderer.render(schemaContent);
+            } finally {
+                renderSample.stop(meterRegistry.timer("vb.publish.render"));
+            }
             log.info("HTML 渲染完成: recordId=" + recordId + ", size=" + html.length() + " bytes");
 
-            // 4. 上传到存储
-            String datePath = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            String storagePath = publishProperties.getStoragePrefix()
-                    + projectId + "/" + pageId + "/v" + versionNo + "/" + datePath + "/index.html";
-
+            // 4. 上传到存储（路径不含日期段：版本号已保证唯一，且便于旧版本产物按路径精确清理）
+            String storagePath = buildArtifactPath(projectId, pageId, versionNo);
             ByteArrayInputStream htmlStream = new ByteArrayInputStream(
                     html.getBytes(StandardCharsets.UTF_8));
             String accessUrl = storageService.upload(htmlStream, storagePath, "text/html; charset=utf-8");
 
             log.info("HTML 上传完成: recordId=" + recordId + ", url=" + accessUrl);
 
-            // 5. 更新发布记录状态为 SUCCESS
-            publishService.markSuccess(recordId, accessUrl);
+            // 5+6. 同一事务内：发布记录置成功 + 页面状态置已发布
+            publishService.completePublish(recordId, pageId, accessUrl);
 
-            // 6. 更新页面状态为已发布
-            page.setStatus(StatusConst.Page.PUBLISHED);
-            pageService.updateById(page);
+            // 7. 清理已被挤出保留窗口的旧版本产物（失败不影响发布结果）
+            deleteExpiredArtifact(projectId, pageId, versionNo);
 
+            meterRegistry.counter("vb.publish.task", "result", "success").increment();
             log.info("发布任务完成: recordId=" + recordId + ", pageId=" + pageId);
 
         } catch (Exception e) {
-            log.error("发布任务失败: recordId=" + recordId + ", error=" + e.getMessage(), e);
-            publishService.markFailed(recordId, truncate(e.getMessage(), 900));
+            meterRegistry.counter("vb.publish.task", "result", "failure").increment();
+            // 只记录并抛出：重试与最终失败标记由消费者（PublishTaskConsumer）统一决策，
+            // 避免首次失败即置 FAILED 导致后续重试被幂等检查短路。
+            log.error("发布任务执行失败: recordId=" + recordId + ", error=" + e.getMessage(), e);
             throw new RuntimeException("发布任务执行失败", e);
         }
     }
 
-    private String truncate(String s, int maxLen) {
-        if (s == null) return null;
-        return s.length() > maxLen ? s.substring(0, maxLen) : s;
+    /** 发布产物存储路径 — 不含日期段，保证同一版本路径可复现、可清理。 */
+    private String buildArtifactPath(Long projectId, Long pageId, Integer versionNo) {
+        return publishProperties.getStoragePrefix()
+                + projectId + "/" + pageId + "/v" + versionNo + "/index.html";
+    }
+
+    /**
+     * 删除刚被挤出保留窗口的版本产物（仅一个版本，避免每次发布全量扫描）。
+     */
+    private void deleteExpiredArtifact(Long projectId, Long pageId, Integer currentVersion) {
+        if (currentVersion == null) return;
+        int expiredVersion = currentVersion - publishProperties.getRetainArtifactVersions();
+        if (expiredVersion < 1) return;
+
+        try {
+            storageService.delete(buildArtifactPath(projectId, pageId, expiredVersion));
+            log.info("已清理过期发布产物: pageId=" + pageId + ", version=" + expiredVersion);
+        } catch (Exception e) {
+            // 发布已成功，清理属旁路动作，失败只记录
+            log.warn("清理过期发布产物失败: pageId=" + pageId + ", version=" + expiredVersion
+                    + ", error=" + e.getMessage());
+        }
     }
 }

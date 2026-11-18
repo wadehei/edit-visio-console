@@ -49,6 +49,14 @@
             <artifactId>vb-system</artifactId>
         </dependency>
 
+        <!-- 集成测试复用 vb-common 的 ItEnv 环境参数入口 -->
+        <dependency>
+            <groupId>com.visualbuilder</groupId>
+            <artifactId>vb-common</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Spring Boot Actuator -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

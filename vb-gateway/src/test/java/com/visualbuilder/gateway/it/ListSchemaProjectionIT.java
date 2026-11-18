@@ -3,6 +3,7 @@ package com.visualbuilder.gateway.it;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.component.dto.ComponentVO;
 import com.visualbuilder.component.entity.Component;
@@ -100,10 +101,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class ListSchemaProjectionIT {
 
-    private static final String MYSQL_URL = System.getProperty("it.mysql.url",
-            "jdbc:mysql://localhost:3306/visual_builder");
-    private static final String MYSQL_USER = System.getProperty("it.mysql.user", "root");
-    private static final String MYSQL_PASSWORD = System.getProperty("it.mysql.password", "");
+    private static final String MYSQL_URL = ItEnv.mysqlUrl();
+    private static final String MYSQL_USER = ItEnv.mysqlUser();
+    private static final String MYSQL_PASSWORD = ItEnv.mysqlPassword();
 
     private static final long TEST_USER_ID = 700200L;
     private static final long TEMPLATE_CATEGORY_ID = 987001L;

@@ -102,4 +102,25 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              把 test 类打包为 test-jar：各业务模块的 *IT 通过它复用统一的环境参数读取逻辑
+              （com.visualbuilder.common.it.ItEnv），避免每个 IT 各自复制一套 System.getProperty 默认值。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-test-jar</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

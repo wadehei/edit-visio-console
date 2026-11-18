@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.page.dto.PageSchemaDTO;
 import com.visualbuilder.page.mapper.PageMapper;
@@ -105,10 +106,9 @@ import static org.mockito.Mockito.when;
 class PageServiceSchemaAndVersionIT {
 
     // ---- 连接参数：默认指向 3306，本机用 -Dit.mysql.url=... 覆盖到 3307 ----
-    private static final String MYSQL_URL = System.getProperty("it.mysql.url",
-            "jdbc:mysql://localhost:3306/visual_builder");
-    private static final String MYSQL_USER = System.getProperty("it.mysql.user", "root");
-    private static final String MYSQL_PASSWORD = System.getProperty("it.mysql.password", "");
+    private static final String MYSQL_URL = ItEnv.mysqlUrl();
+    private static final String MYSQL_USER = ItEnv.mysqlUser();
+    private static final String MYSQL_PASSWORD = ItEnv.mysqlPassword();
 
     private static final long TEST_USER_ID = 700100L;
     private static final long T6_PROJECT_ID = 987654321L;

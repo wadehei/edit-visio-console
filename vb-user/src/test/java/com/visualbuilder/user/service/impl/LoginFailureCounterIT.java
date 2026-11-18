@@ -2,6 +2,7 @@ package com.visualbuilder.user.service.impl;
 
 import com.visualbuilder.common.core.constant.RedisKeyConst;
 import com.visualbuilder.common.core.exception.BusinessException;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.common.security.jwt.JwtUtils;
 import com.visualbuilder.user.dto.LoginDTO;
 import com.visualbuilder.user.entity.SysUser;
@@ -89,9 +90,9 @@ import static org.mockito.Mockito.when;
  */
 class LoginFailureCounterIT {
 
-    private static final String REDIS_HOST = System.getProperty("it.redis.host", "localhost");
-    private static final int REDIS_PORT = Integer.parseInt(System.getProperty("it.redis.port", "6379"));
-    private static final String REDIS_PASSWORD = System.getProperty("it.redis.password", "");
+    private static final String REDIS_HOST = ItEnv.redisHost();
+    private static final int REDIS_PORT = ItEnv.redisPort();
+    private static final String REDIS_PASSWORD = ItEnv.redisPassword();
     private static final int MAX_ATTEMPTS = 5;
     private static final long LOCK_SECONDS = 15 * 60;
 

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.entity.SysRolePermission;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.common.mapper.SysRolePermissionMapper;
 import com.visualbuilder.project.entity.ProjectMember;
 import com.visualbuilder.project.mapper.ProjectMemberMapper;
@@ -110,10 +111,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class MemberAndPermissionIndexIT {
 
-    private static final String MYSQL_URL = System.getProperty("it.mysql.url",
-            "jdbc:mysql://localhost:3306/visual_builder");
-    private static final String MYSQL_USER = System.getProperty("it.mysql.user", "root");
-    private static final String MYSQL_PASSWORD = System.getProperty("it.mysql.password", "");
+    private static final String MYSQL_URL = ItEnv.mysqlUrl();
+    private static final String MYSQL_USER = ItEnv.mysqlUser();
+    private static final String MYSQL_PASSWORD = ItEnv.mysqlPassword();
 
     /** 播种行数：需足够大，才能让优化器按索引基数做出与生产同类的选择。 */
     private static final int ROWS = 20000;

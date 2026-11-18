@@ -23,4 +23,7 @@ public final class LimitsConst {
 
     /** 单次批量操作（删除、添加成员等）最大条数 */
     public static final int MAX_BATCH_SIZE = 50;
+
+    /** 长文本字段（如发布备注）的字符上限 — 校验注解与落库截断共用同一值，避免口径漂移 */
+    public static final int MAX_TEXT_LENGTH = 500;
 }

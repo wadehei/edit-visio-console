@@ -3,6 +3,7 @@ package com.visualbuilder.publish.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.visualbuilder.common.core.base.BaseServiceImpl;
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.constant.RedisKeyConst;
 import com.visualbuilder.common.core.constant.StatusConst;
 import com.visualbuilder.common.core.exception.BusinessException;
@@ -13,6 +14,7 @@ import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.page.service.PageService;
 import com.visualbuilder.project.service.ProjectMemberService;
+import com.visualbuilder.publish.dto.PublishRecordVO;
 import com.visualbuilder.publish.dto.PublishResultVO;
 import com.visualbuilder.publish.dto.PublishTaskMessage;
 import com.visualbuilder.publish.entity.PublishRecord;
@@ -30,6 +32,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -150,7 +153,7 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
     }
 
     @Override
-    public PageResult<PublishRecord> getPublishHistory(Long projectId, int page, int pageSize) {
+    public PageResult<PublishRecordVO> getPublishHistory(Long projectId, int page, int pageSize) {
         // 未登录一律拒绝；仅项目所有者或成员可查看发布历史
         checkProjectAccess(projectId);
 
@@ -162,24 +165,28 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
                 .orderByDesc(PublishRecord::getPublishedAt);
 
         Page<PublishRecord> result = this.page(pageParam, wrapper);
-        return PageResult.of(result.getRecords(), result.getTotal(), pn, ps);
+        List<PublishRecordVO> records = result.getRecords().stream()
+                .map(PublishRecordVO::from)
+                .toList();
+        return PageResult.of(records, result.getTotal(), pn, ps);
     }
 
     @Override
-    public PublishRecord getPublishStatus(Long recordId) {
+    public PublishRecordVO getPublishStatus(Long recordId) {
         PublishRecord record = this.getById(recordId);
         if (record == null) {
             throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "发布记录不存在");
         }
         // 未登录一律拒绝；仅项目所有者或成员可查看发布状态
         checkProjectAccess(record.getProjectId());
-        return record;
+        return PublishRecordVO.from(record);
     }
 
     /**
      * 发布备注长度上限（字符），超出部分截断，避免超长文本写入数据库。
+     * 与 Controller 上的 {@code @Size} 校验共用 {@link LimitsConst#MAX_TEXT_LENGTH}，避免口径漂移。
      */
-    private static final int CHANGELOG_MAX_LENGTH = 500;
+    private static final int CHANGELOG_MAX_LENGTH = LimitsConst.MAX_TEXT_LENGTH;
 
     private static String truncateChangelog(String changelog) {
         if (changelog == null || changelog.length() <= CHANGELOG_MAX_LENGTH) {
@@ -190,13 +197,19 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void markSuccess(Long recordId, String accessUrl) {
+    public void completePublish(Long recordId, Long pageId, String accessUrl) {
         PublishRecord record = this.getById(recordId);
         if (record == null) return;
         record.setStatus(StatusConst.Publish.SUCCESS);
         record.setAccessUrl(accessUrl);
         record.setPublishedAt(LocalDateTime.now());
         this.updateById(record);
+
+        // 与发布记录状态在同一事务内更新页面状态，避免「记录已成功、页面仍编辑中」的跨事务不一致
+        pageService.lambdaUpdate()
+                .eq(com.visualbuilder.page.entity.Page::getId, pageId)
+                .set(com.visualbuilder.page.entity.Page::getStatus, StatusConst.Page.PUBLISHED)
+                .update();
         log.info("发布成功: recordId=" + recordId + ", accessUrl=" + accessUrl);
     }
 

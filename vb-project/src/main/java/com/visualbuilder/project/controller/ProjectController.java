@@ -3,6 +3,7 @@ package com.visualbuilder.project.controller;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
+import com.visualbuilder.common.security.annotation.RateLimit;
 import com.visualbuilder.project.dto.ProjectCreateDTO;
 import com.visualbuilder.project.dto.ProjectImportDTO;
 import com.visualbuilder.project.dto.ProjectVO;
@@ -109,6 +110,8 @@ public class ProjectController {
 
     @OpLog(module = "项目管理", action = "导入项目")
     @Operation(summary = "导入项目配置")
+    @RateLimit(key = "project-import", maxRequests = 5, windowSeconds = 300,
+            message = "导入过于频繁，请稍后再试")
     @PostMapping("/import")
     public R<ProjectVO> importProject(@Valid @RequestBody ProjectImportDTO dto) {
         return R.ok(projectService.importProject(dto));

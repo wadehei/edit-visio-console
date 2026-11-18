@@ -38,9 +38,12 @@ spring:
       simple:
         acknowledge-mode: manual
         prefetch: 1
-        retry:
-          enabled: true
-          max-attempts: 3
+
+# 发布任务重试（由 PublishTaskConsumer 在消费端执行有界重试，避免与容器级重试叠加）
+business:
+  publish:
+    max-retry: 2
+    retry-interval-ms: 2000
 
 # Storage - 本地文件存储（开发环境）
 storage:

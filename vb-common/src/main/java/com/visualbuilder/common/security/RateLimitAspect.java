@@ -5,6 +5,7 @@ import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.annotation.RateLimit;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import jakarta.servlet.http.HttpServletRequest;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
@@ -30,6 +31,7 @@ import java.util.Collections;
 public class RateLimitAspect {
 
     private final StringRedisTemplate redisTemplate;
+    private final MeterRegistry meterRegistry;
 
     /** Lua 脚本：原子性 INCR + EXPIRE */
     private static final String LUA_SCRIPT =
@@ -53,6 +55,8 @@ public class RateLimitAspect {
                 String.valueOf(rateLimit.windowSeconds()));
 
         if (current != null && current > rateLimit.maxRequests()) {
+            // 埋点：按限流 key 统计被拦截次数，便于通过 actuator metrics 观察异常流量
+            meterRegistry.counter("vb.ratelimit.rejected", "key", rateLimit.key()).increment();
             log.warn("限流触发: key={}, current={}, limit={}", limitKey, current, rateLimit.maxRequests());
             throw new BusinessException(ErrorCode.TOO_MANY_REQUESTS, rateLimit.message());
         }

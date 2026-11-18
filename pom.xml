@@ -46,6 +46,12 @@
         <jjwt.version>0.12.5</jjwt.version>
         <hutool.version>5.8.27</hutool.version>
         <redisson.version>3.27.2</redisson.version>
+        <jacoco.version>0.8.11</jacoco.version>
+
+        <!-- 覆盖率门禁阈值（漂移门禁：覆盖率不得低于该比例，低于即 verify 失败）
+             全局默认值；覆盖率偏低的模块可在自身 pom 的 <properties> 内按同名 key 覆盖。 -->
+        <jacoco.line.ratio>0.15</jacoco.line.ratio>
+        <jacoco.branch.ratio>0.10</jacoco.branch.ratio>
     </properties>
 
     <!-- 依赖版本管理 -->
@@ -56,6 +62,13 @@
                 <groupId>com.visualbuilder</groupId>
                 <artifactId>vb-common</artifactId>
                 <version>${vb.version}</version>
+            </dependency>
+            <!-- vb-common 的 test-jar：仅供各模块 *IT 复用 ItEnv 等测试基建 -->
+            <dependency>
+                <groupId>com.visualbuilder</groupId>
+                <artifactId>vb-common</artifactId>
+                <version>${vb.version}</version>
+                <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>com.visualbuilder</groupId>
@@ -192,6 +205,68 @@
                             <goal>integration-test</goal>
                             <goal>verify</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              JaCoCo 覆盖率门禁（漂移门禁）：
+              · prepare-agent 在 initialize 阶段挂载探针；
+              · report/check 绑定 verify 阶段，低于 line/branch 阈值即构建失败。
+              排除 dto/entity/config/constant 等无逻辑样板类，让门禁聚焦于 service/controller 业务逻辑。
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <configuration>
+                    <excludes>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/entity/**</exclude>
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/core/constant/**</exclude>
+                        <exclude>**/*Application.class</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.line.ratio}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.branch.ratio}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

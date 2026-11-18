@@ -3,6 +3,7 @@ package com.visualbuilder.system.service.impl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.system.mapper.LoginLogMapper;
 import com.visualbuilder.system.mapper.SysConfigMapper;
 import com.visualbuilder.system.mapper.SysLogMapper;
@@ -98,14 +99,13 @@ import static org.mockito.Mockito.mock;
  */
 class ConfigCacheInvalidationIT {
 
-    private static final String MYSQL_URL = System.getProperty("it.mysql.url",
-            "jdbc:mysql://localhost:3306/visual_builder");
-    private static final String MYSQL_USER = System.getProperty("it.mysql.user", "root");
-    private static final String MYSQL_PASSWORD = System.getProperty("it.mysql.password", "");
+    private static final String MYSQL_URL = ItEnv.mysqlUrl();
+    private static final String MYSQL_USER = ItEnv.mysqlUser();
+    private static final String MYSQL_PASSWORD = ItEnv.mysqlPassword();
 
-    private static final String REDIS_HOST = System.getProperty("it.redis.host", "localhost");
-    private static final int REDIS_PORT = Integer.parseInt(System.getProperty("it.redis.port", "6379"));
-    private static final String REDIS_PASSWORD = System.getProperty("it.redis.password", "");
+    private static final String REDIS_HOST = ItEnv.redisHost();
+    private static final int REDIS_PORT = ItEnv.redisPort();
+    private static final String REDIS_PASSWORD = ItEnv.redisPassword();
 
     /** 与 {@code SystemServiceImpl#CONFIG_CACHE_KEY} 的契约一致：服务端若改用其它键名，本测试会失败发现。 */
     private static final String CACHE_KEY = "system:configs:all";

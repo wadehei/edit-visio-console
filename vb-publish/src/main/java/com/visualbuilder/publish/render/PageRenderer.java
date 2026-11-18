@@ -2,6 +2,7 @@ package com.visualbuilder.publish.render;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.visualbuilder.publish.config.PublishProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,9 +31,20 @@ public class PageRenderer {
 
     private final ComponentRendererRegistry registry;
     private final ObjectMapper objectMapper;
+    private final PublishProperties publishProperties;
 
     /** 组件计数器（线程不安全，仅用于单次渲染过程） */
     private int componentCount;
+
+    private int maxComponents() {
+        int configured = publishProperties.getMaxComponentCount();
+        return configured > 0 ? configured : DEFAULT_MAX_COMPONENTS;
+    }
+
+    private int maxDepth() {
+        int configured = publishProperties.getMaxRenderDepth();
+        return configured > 0 ? configured : DEFAULT_MAX_DEPTH;
+    }
 
     /**
      * 将 PageSchema JSON 字符串渲染为完整 HTML
@@ -78,7 +90,7 @@ public class PageRenderer {
      */
     public void renderNode(SchemaNode node, HtmlBuilder out, ComponentRenderer.RenderContext ctx) {
         componentCount++;
-        if (componentCount > DEFAULT_MAX_COMPONENTS) {
+        if (componentCount > maxComponents()) {
             out.append("<!-- max component count exceeded -->");
             return;
         }
@@ -128,7 +140,7 @@ public class PageRenderer {
 
         // 渲染所有子组件
         ComponentRenderer.RenderContext ctx = new ComponentRenderer.RenderContext(
-                0, DEFAULT_MAX_DEPTH, this);
+                0, maxDepth(), this);
         for (SchemaNode child : children) {
             renderNode(child, html, ctx);
         }
@@ -155,7 +167,7 @@ public class PageRenderer {
     private String getBaseCss(int pageWidth) {
         return """
                 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-                html{-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
+                html{-webkit-text-size-adjust:100%%;-webkit-font-smoothing:antialiased}
                 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
                      font-size:14px;line-height:1.5;color:#333;max-width:%dpx;margin:0 auto;overflow-x:hidden}
                 img,video{max-width:100%%;height:auto;display:block}

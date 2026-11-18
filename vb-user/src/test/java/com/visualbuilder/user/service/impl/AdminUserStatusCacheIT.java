@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.visualbuilder.common.core.constant.RedisKeyConst;
 import com.visualbuilder.common.core.constant.StatusConst;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.user.mapper.SysUserMapper;
 import com.visualbuilder.user.mapper.SysUserRoleMapper;
 import org.apache.ibatis.mapping.Environment;
@@ -97,14 +98,13 @@ import static org.mockito.Mockito.mock;
  */
 class AdminUserStatusCacheIT {
 
-    private static final String MYSQL_URL = System.getProperty("it.mysql.url",
-            "jdbc:mysql://localhost:3306/visual_builder");
-    private static final String MYSQL_USER = System.getProperty("it.mysql.user", "root");
-    private static final String MYSQL_PASSWORD = System.getProperty("it.mysql.password", "");
+    private static final String MYSQL_URL = ItEnv.mysqlUrl();
+    private static final String MYSQL_USER = ItEnv.mysqlUser();
+    private static final String MYSQL_PASSWORD = ItEnv.mysqlPassword();
 
-    private static final String REDIS_HOST = System.getProperty("it.redis.host", "localhost");
-    private static final int REDIS_PORT = Integer.parseInt(System.getProperty("it.redis.port", "6379"));
-    private static final String REDIS_PASSWORD = System.getProperty("it.redis.password", "");
+    private static final String REDIS_HOST = ItEnv.redisHost();
+    private static final int REDIS_PORT = ItEnv.redisPort();
+    private static final String REDIS_PASSWORD = ItEnv.redisPassword();
 
     /** 播种用户名；{@code sys_user} 唯一键为 (username, deleted)，故可安全反复增删。 */
     private static final String TEST_USERNAME = "it_admin_status";

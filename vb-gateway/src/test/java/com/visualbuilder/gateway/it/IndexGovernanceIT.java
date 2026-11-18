@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.page.mapper.PageMapper;
 import com.visualbuilder.publish.entity.PublishRecord;
 import com.visualbuilder.publish.mapper.PublishRecordMapper;
@@ -114,10 +115,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class IndexGovernanceIT {
 
-    private static final String MYSQL_URL = System.getProperty("it.mysql.url",
-            "jdbc:mysql://localhost:3306/visual_builder");
-    private static final String MYSQL_USER = System.getProperty("it.mysql.user", "root");
-    private static final String MYSQL_PASSWORD = System.getProperty("it.mysql.password", "");
+    private static final String MYSQL_URL = ItEnv.mysqlUrl();
+    private static final String MYSQL_USER = ItEnv.mysqlUser();
+    private static final String MYSQL_PASSWORD = ItEnv.mysqlPassword();
 
     /** 播种行数：需足够大，才能让优化器按索引基数做出与生产同类的选择。 */
     private static final int ROWS = 20000;

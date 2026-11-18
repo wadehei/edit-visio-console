@@ -14,6 +14,12 @@
     <name>VB Resource</name>
     <description>资源管理模块：文件上传、图片管理、MinIO存储</description>
 
+    <!-- 覆盖率门禁阈值（本模块当前基线，防漂移下调） -->
+    <properties>
+        <jacoco.line.ratio>0.13</jacoco.line.ratio>
+        <jacoco.branch.ratio>0.11</jacoco.branch.ratio>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.visualbuilder</groupId>

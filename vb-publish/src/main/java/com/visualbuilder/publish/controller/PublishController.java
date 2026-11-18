@@ -1,10 +1,12 @@
 package com.visualbuilder.publish.controller;
 
+import com.visualbuilder.common.core.constant.LimitsConst;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.core.result.R;
 import com.visualbuilder.common.security.annotation.OpLog;
+import com.visualbuilder.common.security.annotation.RateLimit;
+import com.visualbuilder.publish.dto.PublishRecordVO;
 import com.visualbuilder.publish.dto.PublishResultVO;
-import com.visualbuilder.publish.entity.PublishRecord;
 import com.visualbuilder.publish.service.PublishService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,23 +25,27 @@ public class PublishController {
 
     @Operation(summary = "发布页面")
     @OpLog(module = "发布管理", action = "发布页面")
+    @RateLimit(key = "publish", maxRequests = 10, windowSeconds = 60,
+            message = "发布过于频繁，请稍后再试")
     @PostMapping("/api/v1/projects/{projectId}/pages/{pageId}/publish")
     public R<PublishResultVO> publish(
             @PathVariable Long projectId,
             @PathVariable Long pageId,
-            @RequestParam(required = false) @Size(max = 500, message = "发布备注最多 500 个字符") String changelog) {
+            @RequestParam(required = false)
+            @Size(max = LimitsConst.MAX_TEXT_LENGTH,
+                    message = "发布备注最多 " + LimitsConst.MAX_TEXT_LENGTH + " 个字符") String changelog) {
         return R.ok(publishService.publish(projectId, pageId, changelog));
     }
 
     @Operation(summary = "查询发布状态")
     @GetMapping("/api/v1/publish-records/{recordId}/status")
-    public R<PublishRecord> publishStatus(@PathVariable Long recordId) {
+    public R<PublishRecordVO> publishStatus(@PathVariable Long recordId) {
         return R.ok(publishService.getPublishStatus(recordId));
     }
 
     @Operation(summary = "发布历史（分页）")
     @GetMapping("/api/v1/projects/{projectId}/publish-history")
-    public R<PageResult<PublishRecord>> publishHistory(
+    public R<PageResult<PublishRecordVO>> publishHistory(
             @PathVariable Long projectId,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {

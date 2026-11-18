@@ -56,6 +56,9 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
     /** schema_snapshot 列名 — 版本列表查询时排除该大字段 */
     private static final String SCHEMA_SNAPSHOT_COLUMN = "schema_snapshot";
 
+    /** 每保存 N 次创建一个版本快照 */
+    private static final int VERSION_SNAPSHOT_INTERVAL = 5;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageVO createPage(Long projectId, PageCreateDTO dto) {
@@ -155,21 +158,33 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
 
         try {
             String schemaJson = objectMapper.writeValueAsString(dto.getSchema());
+
+            int nextVersion = (page.getSchemaVersion() != null ? page.getSchemaVersion() : 0) + 1;
+
+            // 只更新 schema_content / schema_version 两列（其余列不进 UPDATE），
+            // 避免把整行元数据回写造成的写放大与并发保存时的丢失更新；
+            // updated_time / updated_by 由 MyBatis-Plus 自动填充。
+            Page patch = new Page();
+            patch.setId(pageId);
+            patch.setSchemaContent(schemaJson);
+            patch.setSchemaVersion(nextVersion);
+            updateById(patch);
+
+            // 回填内存对象，供版本快照与响应 VO 使用
             page.setSchemaContent(schemaJson);
+            page.setSchemaVersion(nextVersion);
+            if (patch.getUpdatedTime() != null) {
+                page.setUpdatedTime(patch.getUpdatedTime());
+            }
+
+            if (nextVersion % VERSION_SNAPSHOT_INTERVAL == 0) {
+                createVersionSnapshot(page, nextVersion, dto.getIsAutoSave());
+            }
+
+            return toVO(page);
         } catch (JsonProcessingException e) {
             throw new BusinessException("Schema 序列化失败");
         }
-
-        int nextVersion = (page.getSchemaVersion() != null ? page.getSchemaVersion() : 0) + 1;
-        page.setSchemaVersion(nextVersion);
-        updateById(page);
-
-        // 每5次保存创建版本快照
-        if (nextVersion % 5 == 0) {
-            createVersionSnapshot(page, nextVersion, dto.getIsAutoSave());
-        }
-
-        return toVO(page);
     }
 
     @Override
@@ -340,20 +355,11 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         pageVersionMapper.insert(snapshot);
         log.info("创建页面版本快照: pageId={}, version={}", page.getId(), versionNo);
 
-        // 版本数量上限检查 — 超出时删除最早的版本
-        long count = pageVersionMapper.selectCount(
-                new LambdaQueryWrapper<PageVersion>().eq(PageVersion::getPageId, page.getId()));
-        if (count > maxVersionCount) {
-            long excess = count - maxVersionCount;
-            List<PageVersion> oldest = pageVersionMapper.selectList(
-                    new LambdaQueryWrapper<PageVersion>()
-                            .eq(PageVersion::getPageId, page.getId())
-                            .orderByAsc(PageVersion::getVersionNo)
-                            .last("LIMIT " + excess));
-            List<Long> expiredIds = oldest.stream().map(PageVersion::getId).toList();
-            pageVersionMapper.delete(new LambdaQueryWrapper<PageVersion>()
-                    .in(PageVersion::getId, expiredIds));
-            log.info("清理过期版本: pageId={}, 删除{}个旧版本", page.getId(), oldest.size());
+        // 版本数量上限裁剪 — 单条语句「只保留最新 N 个版本」，
+        // 替代 count → select → delete 三步流程，消除并发保存下的超限竞态并省去一次 count 查询。
+        int pruned = pageVersionMapper.deleteExcessVersions(page.getId(), maxVersionCount);
+        if (pruned > 0) {
+            log.info("清理过期版本: pageId={}, 删除{}个旧版本", page.getId(), pruned);
         }
     }
 
