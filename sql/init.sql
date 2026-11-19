@@ -260,7 +260,6 @@ CREATE TABLE biz_component (
   PRIMARY KEY (id),
   KEY idx_component_type (type),
   KEY idx_component_status (status),
-  KEY idx_component_category_status (category_id, status),
   -- 覆盖「按分类 + 状态过滤 + sort_order 排序」的组件列表查询
   KEY idx_component_category_status_sort (category_id, status, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='组件表';
@@ -300,7 +299,6 @@ CREATE TABLE biz_template (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_category_id (category_id),
   KEY idx_template_status_usecount (status, use_count),
   -- 覆盖「按分类 + 状态过滤 + use_count 排序」的模板列表查询
   KEY idx_template_category_status_usecount (category_id, status, use_count)
