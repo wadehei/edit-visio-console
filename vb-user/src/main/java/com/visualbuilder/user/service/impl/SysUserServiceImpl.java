@@ -120,11 +120,15 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
                     "登录尝试次数过多，请 " + (ttl != null ? ttl / 60 + 1 : 15) + " 分钟后重试");
         }
 
-        // 查找用户（支持用户名/邮箱/手机号登录）
+        // 查找用户（支持用户名/邮箱/手机号登录）。
+        // 三个条件必须用 and(w -> ...) 分组：MyBatis-Plus 的逻辑删除条件在 wrapper 段之前
+        // 且不加括号拼接,顶层 .or() 会生成 "deleted=0 AND username=? OR email=? ..."，
+        // AND 优先级更高,按邮箱/手机号登录会绕过逻辑删除,已删除用户仍可登录。
         SysUser user = this.getOne(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getUsername, loginKey)
-                .or().eq(SysUser::getEmail, loginKey)
-                .or().eq(SysUser::getPhone, loginKey));
+                .and(w -> w.eq(SysUser::getUsername, loginKey)
+                        .or().eq(SysUser::getEmail, loginKey)
+                        .or().eq(SysUser::getPhone, loginKey))
+                .last("LIMIT 1"));
 
         if (user == null) {
             recordLoginFailure(loginKey);

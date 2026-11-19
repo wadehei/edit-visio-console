@@ -61,7 +61,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             List<String> cacheKeys = List.of(
                     RedisKeyConst.tokenBlacklist(jti),
                     RedisKeyConst.userDisabled(userId));
-            List<String> cacheValues = redisTemplate.opsForValue().multiGet(cacheKeys);
+            List<String> cacheValues;
+            try {
+                cacheValues = redisTemplate.opsForValue().multiGet(cacheKeys);
+            } catch (Exception redisFailure) {
+                // Redis 故障时黑名单/禁用检查降级为放行(fail-open):
+                // 该检查是所有请求的必经路径,fail-closed 会把 Redis 抖动放大为全站不可用。
+                // 降级窗口内被注销/禁用的 token 至多多活一个访问令牌周期(≤30 分钟),
+                // 令牌本身仍受签名与过期校验保护;可用性优先并记录告警。
+                log.warn("鉴权缓存 Redis 不可用,黑名单/禁用检查降级放行: userId={}, error={}",
+                        userId, redisFailure.getMessage());
+                cacheValues = null;
+            }
 
             // 检查 token 黑名单（logout 后 token 被加入黑名单）
             if (cacheValues != null && cacheValues.size() > 0 && cacheValues.get(0) != null) {

@@ -79,12 +79,20 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
         if (role == null) {
             throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "角色不存在");
         }
+        Integer oldStatus = role.getStatus();
         if (dto.getRoleName() != null) role.setRoleName(dto.getRoleName());
         if (dto.getSortOrder() != null) role.setSortOrder(dto.getSortOrder());
         if (dto.getStatus() != null) role.setStatus(dto.getStatus());
         if (dto.getDataScope() != null) role.setDataScope(dto.getDataScope());
         if (dto.getRemark() != null) role.setRemark(dto.getRemark());
         this.updateById(role);
+        // 禁用/启用角色会改变用户实际持有的角色集合(禁用角色的 roleKey 不再随令牌签发),
+        // 与 assignPermissions/deleteRole 一样必须在事务提交后整体失效用户权限缓存
+        if (dto.getStatus() != null && !dto.getStatus().equals(oldStatus)) {
+            TransactionUtils.executeAfterCommit(userAuthCacheVersion::bump);
+            log.info("角色状态变更,已失效用户权限缓存: roleId={}, {} -> {}",
+                    roleId, oldStatus, dto.getStatus());
+        }
     }
 
     @Override

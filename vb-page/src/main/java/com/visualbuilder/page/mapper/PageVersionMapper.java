@@ -5,9 +5,20 @@ import com.visualbuilder.page.entity.PageVersion;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface PageVersionMapper extends BaseMapper<PageVersion> {
+
+    /**
+     * 指定页面已落库的最大版本号（无快照时返回 0）。
+     *
+     * <p>保存/回滚推进版本号时必须取 {@code max(页面当前版本, 该值) + 1}：
+     * 回滚会把页面当前版本号拨回旧值，若只看页面当前版本，后续保存生成的版本号
+     * 会与历史快照撞 {@code uk_page_version} 唯一键，页面从此永久 409。</p>
+     */
+    @Select("SELECT COALESCE(MAX(version_no), 0) FROM biz_page_version WHERE page_id = #{pageId}")
+    int selectMaxVersionNo(@Param("pageId") Long pageId);
 
     /**
      * 仅保留指定页面的最新 {@code keep} 个版本，删除更早的版本。

@@ -62,7 +62,7 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     private static final java.util.regex.Pattern FOLDER_ID_PATTERN =
             java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
-    @Value("${business.resource.allowed-image-types:jpg,jpeg,png,gif,webp,svg}")
+    @Value("${business.resource.allowed-image-types:jpg,jpeg,png,gif,webp}")
     private String allowedImageTypes;
 
     @Value("${business.resource.max-image-size:10485760}")
@@ -99,6 +99,24 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
     /** mp4 的 ISO Base Media File Format box 标识：位于偏移 4（前 4 字节为 box 长度）。 */
     private static final byte[] MP4_BOX_TYPE = "ftyp".getBytes(StandardCharsets.US_ASCII);
 
+    /**
+     * 扩展名 → 权威 Content-Type 映射：contentType 一律以扩展名推导的服务端权威值落库与上传，
+     * 不信任客户端请求头（伪造 {@code text/html} 可被对象存储直接渲染为页面）。
+     */
+    private static final Map<String, String> EXT_CONTENT_TYPE = Map.ofEntries(
+            Map.entry("jpg", "image/jpeg"),
+            Map.entry("jpeg", "image/jpeg"),
+            Map.entry("png", "image/png"),
+            Map.entry("gif", "image/gif"),
+            Map.entry("webp", "image/webp"),
+            Map.entry("bmp", "image/bmp"),
+            Map.entry("mp4", "video/mp4"),
+            Map.entry("webm", "video/webm"),
+            Map.entry("mp3", "audio/mpeg"),
+            Map.entry("wav", "audio/wav"),
+            Map.entry("ogg", "audio/ogg"),
+            Map.entry("aac", "audio/aac"));
+
     @Override
     public UploadResultVO upload(MultipartFile file, String folderId) {
         Long userId = SecurityUtils.requireCurrentUserId();
@@ -111,8 +129,19 @@ public class ResourceServiceImpl extends BaseServiceImpl<ResourceMapper, Resourc
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf(".") + 1).toLowerCase();
         }
+        // 无扩展名的文件直接拒绝：扩展名是类型校验与权威 Content-Type 推导的锚点，
+        // 缺失时所有校验都会被短路，等于放行任意内容
+        if (extension.isEmpty()) {
+            throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED, "文件缺少扩展名，无法验证文件类型");
+        }
+        // 扩展名必须已登记权威 Content-Type —— 未登记的类型（如 svg，可承载脚本）不允许上传
+        String authoritativeContentType = EXT_CONTENT_TYPE.get(extension);
+        if (authoritativeContentType == null) {
+            throw new BusinessException(ErrorCode.FILE_TYPE_NOT_ALLOWED,
+                    "不支持的文件类型: " + extension + "。请上传常见图片/音视频格式");
+        }
 
-        String contentType = file.getContentType();
+        String contentType = authoritativeContentType;
         String resourceType = resolveResourceType(contentType);
 
         // 文件类型校验

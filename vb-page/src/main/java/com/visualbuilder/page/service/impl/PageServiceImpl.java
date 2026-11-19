@@ -160,8 +160,12 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
         try {
             String schemaJson = objectMapper.writeValueAsString(dto.getSchema());
 
+            // 版本号单调推进:必须取 max(页面当前版本, 历史快照最大版本) + 1。
+            // 回滚会把页面当前版本号拨回旧值,若只看页面当前版本,后续保存生成的
+            // 版本号会与 uk_page_version 历史快照撞唯一键 → 409 → 事务回滚后
+            // 版本号停在原地,页面从此每次保存都在同一处失败(死锁式数据故障)。
             int currentVersion = page.getSchemaVersion() != null ? page.getSchemaVersion() : 0;
-            int nextVersion = currentVersion + 1;
+            int nextVersion = Math.max(currentVersion, pageVersionMapper.selectMaxVersionNo(pageId)) + 1;
 
             // 乐观锁：只更新 schema_content / schema_version 两列（其余列不进 UPDATE），
             // 并以 WHERE schema_version = 读取时的旧值 作为并发前置条件。
@@ -238,8 +242,12 @@ public class PageServiceImpl extends BaseServiceImpl<PageMapper, Page>
             throw new BusinessException(ErrorCode.DATA_NOT_FOUND, "版本不存在");
         }
 
+        // 回滚 = 一次以旧快照为内容的新保存:内容取快照,版本号仍单调推进,
+        // 绝不回拨版本号(否则后续保存会与历史快照撞唯一键,见 saveSchema 注释)
         page.setSchemaContent(version.getSchemaSnapshot());
-        page.setSchemaVersion(version.getVersionNo());
+        page.setSchemaVersion(Math.max(
+                page.getSchemaVersion() != null ? page.getSchemaVersion() : 0,
+                pageVersionMapper.selectMaxVersionNo(pageId)) + 1);
         updateById(page);
 
         return toVO(page);

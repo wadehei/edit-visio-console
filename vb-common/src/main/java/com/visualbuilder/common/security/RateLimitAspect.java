@@ -48,11 +48,20 @@ public class RateLimitAspect {
     public void checkRateLimit(JoinPoint point, RateLimit rateLimit) {
         String limitKey = buildKey(rateLimit);
 
-        Long current = redisTemplate.execute(
-                SCRIPT,
-                Collections.singletonList(limitKey),
-                String.valueOf(rateLimit.maxRequests()),
-                String.valueOf(rateLimit.windowSeconds()));
+        Long current;
+        try {
+            current = redisTemplate.execute(
+                    SCRIPT,
+                    Collections.singletonList(limitKey),
+                    String.valueOf(rateLimit.maxRequests()),
+                    String.valueOf(rateLimit.windowSeconds()));
+        } catch (Exception e) {
+            // Redis 故障时限流降级为放行(fail-open):限流是保护措施而非业务功能,
+            // 阻断它会把基础设施故障放大为全站 500。放行并记录告警,靠监控补偿。
+            meterRegistry.counter("vb.ratelimit.fallback", "key", rateLimit.key()).increment();
+            log.warn("限流器 Redis 不可用,降级放行: key={}, error={}", limitKey, e.getMessage());
+            return;
+        }
 
         if (current != null && current > rateLimit.maxRequests()) {
             // 埋点：按限流 key 统计被拦截次数，便于通过 actuator metrics 观察异常流量

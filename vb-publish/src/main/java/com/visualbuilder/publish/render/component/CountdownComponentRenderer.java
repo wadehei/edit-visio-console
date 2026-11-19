@@ -5,22 +5,38 @@ import com.visualbuilder.publish.render.HtmlBuilder;
 import com.visualbuilder.publish.render.SchemaNode;
 import org.springframework.stereotype.Component;
 
+import java.util.regex.Pattern;
+
 /**
  * 倒计时组件渲染器 — 渲染静态倒计时展示 + 内联 JS 实现动态计时。
+ *
+ * <p>内联 JS 是发布产物唯一的脚本注入点,全部插值参数必须先过白名单:
+ * 任何对字符串做"转义后再拼接"的方案(如仅替换引号)都会被反斜杠等
+ * 二次转义手法绕过(存储型 XSS),因此这里只接受白名单形状的值。</p>
  */
 @Component("countdown")
 public class CountdownComponentRenderer implements ComponentRenderer {
+
+    /** 目标时间只接受 ISO 本地日期时间形状,不匹配一律回退默认值。 */
+    private static final Pattern TARGET_DATE_PATTERN =
+            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$");
+    /** DOM 元素 id 只接受安全字符,不匹配生成随机 id。 */
+    private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
+    private static final String DEFAULT_TARGET_DATE = "2099-12-31T23:59:59";
 
     @Override
     public void render(SchemaNode node, HtmlBuilder out, RenderContext ctx) {
         String targetDate = node.getPropString("targetDate");
         String title = node.getPropString("title");
-        if (targetDate == null || targetDate.isEmpty()) {
-            targetDate = "2099-12-31T23:59:59";
+        if (targetDate == null || !TARGET_DATE_PATTERN.matcher(targetDate).matches()) {
+            targetDate = DEFAULT_TARGET_DATE;
         }
 
         // 生成唯一 ID 用于 JS 绑定
         String compId = node.getId() != null ? node.getId() : "cd_" + System.nanoTime();
+        if (!SAFE_ID_PATTERN.matcher(compId).matches()) {
+            compId = "cd_" + Long.toUnsignedString(System.nanoTime());
+        }
         String inlineStyle = HtmlBuilder.stylesToInlineCss(node.getStyles());
         String containerStyle = !inlineStyle.isEmpty() ? inlineStyle
                 : "text-align:center;padding:16px;background:#f8f9fa;border-radius:8px;";

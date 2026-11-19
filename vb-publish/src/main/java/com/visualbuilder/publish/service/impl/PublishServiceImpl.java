@@ -13,6 +13,7 @@ import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.util.PageUtils;
 import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.page.service.PageService;
+import com.visualbuilder.common.core.constant.ProjectRole;
 import com.visualbuilder.project.service.ProjectMemberService;
 import com.visualbuilder.publish.dto.PublishRecordVO;
 import com.visualbuilder.publish.dto.PublishResultVO;
@@ -43,6 +44,9 @@ import java.util.UUID;
 public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, PublishRecord>
         implements PublishService {
 
+    /** PENDING 记录超过该分钟数视为陈旧（发送丢失/消费崩溃），不再阻塞新发布。 */
+    private static final long PENDING_STALE_MINUTES = 10;
+
     private final PageService pageService;
     private final ProjectMemberService projectMemberService;
     private final PublishTaskProducer publishTaskProducer;
@@ -70,9 +74,13 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
             throw new BusinessException(ErrorCode.PUBLISH_FAILED, "页面内容为空，无法发布");
         }
 
-        // 权限校验：仅项目所有者或成员可发布（未登录一律拒绝）
-        checkProjectAccess(projectId);
-        Long userId = SecurityUtils.getCurrentUserId();
+        // 权限校验：发布要求编辑权限（页面创建者或项目 EDIT 角色），与页面写权限模型一致——
+        // 只读（VIEW）协作者不得把页面内容发布到公网
+        Long userId = SecurityUtils.requireCurrentUserId();
+        if (!page.getUserId().equals(userId)
+                && !projectMemberService.hasProjectRole(projectId, userId, ProjectRole.EDIT)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权发布此页面，需要编辑权限");
+        }
 
         // 2. 检查是否已有进行中的发布任务（防并发，使用 Redis 分布式锁）
         String lockKey = RedisKeyConst.publishLock(pageId);
@@ -118,10 +126,15 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
             Long.class);
 
     private PublishResultVO doPublish(Long projectId, Long pageId, String changelog, Long userId) {
-        // 二次检查 PENDING 状态（锁内校验）
+        // 二次检查 PENDING 状态（锁内校验）。
+        // 只统计「未超时」的 PENDING:afterCommit 发送失败或应用崩溃会留下无法推进的
+        // 陈旧 PENDING(消费者幂等条件 status=PENDING 保证旧消息不会误推进),若不加时间
+        // 维度,该页面将被永久卡死无法再次发布。
         long pendingCount = this.count(new LambdaQueryWrapper<PublishRecord>()
                 .eq(PublishRecord::getPageId, pageId)
-                .eq(PublishRecord::getStatus, StatusConst.Publish.PENDING));
+                .eq(PublishRecord::getStatus, StatusConst.Publish.PENDING)
+                .gt(PublishRecord::getCreatedTime,
+                        LocalDateTime.now().minusMinutes(PENDING_STALE_MINUTES)));
         if (pendingCount > 0) {
             throw new BusinessException(ErrorCode.PUBLISH_FAILED, "当前有正在发布中的任务，请稍后再试");
         }
@@ -151,7 +164,20 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
         // 5. 发送异步任务消息 — 必须等事务提交后再发送，否则事务回滚会出现"消息已发、记录不存在"
         PublishTaskMessage msg = new PublishTaskMessage(
                 record.getId(), projectId, pageId, nextVersion, 0);
-        TransactionUtils.executeAfterCommit(() -> publishTaskProducer.send(msg));
+        TransactionUtils.executeAfterCommit(() -> {
+            try {
+                publishTaskProducer.send(msg);
+            } catch (Exception e) {
+                // 记录已在事务中提交,发送失败无法回滚——立即把 PENDING 置为 FAILED,
+                // 否则这条记录会一直占用「进行中发布」名额,页面从此无法再发布
+                log.error("发布任务消息发送失败,标记记录为 FAILED: recordId={}", record.getId(), e);
+                this.lambdaUpdate()
+                        .eq(PublishRecord::getId, record.getId())
+                        .eq(PublishRecord::getStatus, StatusConst.Publish.PENDING)
+                        .set(PublishRecord::getStatus, StatusConst.Publish.FAILED)
+                        .update();
+            }
+        });
 
         log.info("发布任务已创建: recordId={}, projectId={}, pageId={}, version={}",
                 record.getId(), projectId, pageId, nextVersion);
