@@ -3,6 +3,8 @@ package com.visualbuilder.page.service.impl;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
+import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
+import com.visualbuilder.common.mybatis.AutoFillHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -144,6 +146,12 @@ class PageServiceSchemaAndVersionIT {
             dataSource = new SingleConnectionDataSource(physical, true);
 
             MybatisConfiguration configuration = new MybatisConfiguration();
+            // 生产环境 MetaObjectHandler 由 Spring 容器装配;手工构建 SqlSessionFactory 时必须
+            // 显式注册,否则 saveSchema 的 UPDATE 会把 updated_time 置 NULL,在严格模式的
+            // MySQL 8.0(CI)上直接报约束冲突,而宽松 sql_mode 的本机库则会静默放过——
+            // 这正是 CI 与本机结果不一致的根因。
+            GlobalConfigUtils.getGlobalConfig(configuration)
+                    .setMetaObjectHandler(new AutoFillHandler());
             configuration.setMapUnderscoreToCamelCase(true);
             configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
             configuration.setEnvironment(new Environment("it-env", new JdbcTransactionFactory(), dataSource));
