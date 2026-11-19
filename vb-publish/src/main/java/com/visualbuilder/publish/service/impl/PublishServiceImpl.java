@@ -209,15 +209,18 @@ public class PublishServiceImpl extends BaseServiceImpl<PublishRecordMapper, Pub
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void completePublish(Long recordId, Long pageId, String accessUrl) {
-        // 直接按 id 更新，避免与执行器中的 getById 重复查询同一条记录
+        // 直接按 id 更新，避免与执行器中的 getById 重复查询同一条记录。
+        // 附加 status=PENDING 条件：把幂等下沉为数据库原子条件更新，
+        // 并发重复投递时只有一个消费者能把 PENDING 推进为 SUCCESS。
         boolean updated = this.lambdaUpdate()
                 .eq(PublishRecord::getId, recordId)
+                .eq(PublishRecord::getStatus, StatusConst.Publish.PENDING)
                 .set(PublishRecord::getStatus, StatusConst.Publish.SUCCESS)
                 .set(PublishRecord::getAccessUrl, accessUrl)
                 .set(PublishRecord::getPublishedAt, LocalDateTime.now())
                 .update();
         if (!updated) {
-            log.info("发布记录不存在，跳过发布成功标记: recordId={}", recordId);
+            log.info("发布记录非 PENDING（已处理或不存在），跳过发布成功标记: recordId={}", recordId);
             return;
         }
 

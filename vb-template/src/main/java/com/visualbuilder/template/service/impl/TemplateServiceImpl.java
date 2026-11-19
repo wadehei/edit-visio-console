@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Service
@@ -44,6 +45,11 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
 
     private static final String CACHE_KEY_LIST = "template:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
+
+    /** 缓存 TTL = 基础值 + 0~10% 随机抖动，避免大量 key 在同一时刻集中过期形成缓存雪崩 */
+    private static Duration jitteredCacheTtl() {
+        return CACHE_TTL.plusSeconds(ThreadLocalRandom.current().nextLong(CACHE_TTL.getSeconds() / 10 + 1));
+    }
 
     /** 列表不需要完整 Schema，查询时排除该大字段 */
     private static final String PAGE_SCHEMA_COLUMN = "page_schema";
@@ -77,7 +83,7 @@ public class TemplateServiceImpl extends BaseServiceImpl<TemplateMapper, Templat
         if (categoryId == null && !StringUtils.hasText(keyword) && !StringUtils.hasText(tag)) {
             try {
                 redisTemplate.opsForValue().set(CACHE_KEY_LIST,
-                        objectMapper.writeValueAsString(result), CACHE_TTL);
+                        objectMapper.writeValueAsString(result), jitteredCacheTtl());
             } catch (Exception e) {
                 log.warn("写入模板缓存失败: {}", e.getMessage());
             }

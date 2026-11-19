@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Service
@@ -42,6 +43,11 @@ public class SystemServiceImpl extends BaseServiceImpl<SysConfigMapper, SysConfi
 
     private static final String CONFIG_CACHE_KEY = "system:configs:all";
     private static final Duration CONFIG_CACHE_TTL = Duration.ofHours(1);
+
+    /** 缓存 TTL = 基础值 + 0~10% 随机抖动，避免大量 key 在同一时刻集中过期形成缓存雪崩 */
+    private static Duration jitteredConfigTtl() {
+        return CONFIG_CACHE_TTL.plusSeconds(ThreadLocalRandom.current().nextLong(CONFIG_CACHE_TTL.getSeconds() / 10 + 1));
+    }
 
     @Override
     public List<SysConfig> getConfigs() {
@@ -61,7 +67,7 @@ public class SystemServiceImpl extends BaseServiceImpl<SysConfigMapper, SysConfi
         // 写入缓存
         try {
             redisTemplate.opsForValue().set(CONFIG_CACHE_KEY,
-                    objectMapper.writeValueAsString(configs), CONFIG_CACHE_TTL);
+                    objectMapper.writeValueAsString(configs), jitteredConfigTtl());
         } catch (Exception e) {
             log.warn("写入系统配置缓存失败: {}", e.getMessage());
         }

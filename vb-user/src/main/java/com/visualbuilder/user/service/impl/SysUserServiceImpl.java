@@ -9,6 +9,7 @@ import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.security.jwt.JwtUtils;
 import com.visualbuilder.common.security.utils.SecurityUtils;
 import com.visualbuilder.common.util.IpUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.user.converter.UserConverter;
 import com.visualbuilder.user.dto.*;
 import com.visualbuilder.user.entity.SysRole;
@@ -46,6 +47,7 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
     private final SysUserRoleMapper userRoleMapper;
     private final SysRoleMapper sysRoleMapper;
     private final StringRedisTemplate redisTemplate;
+    private final UserAuthCacheService userAuthCacheService;
 
     private static final int MAX_LOGIN_ATTEMPTS = 5;
     private static final Duration LOCK_DURATION = Duration.ofMinutes(15);
@@ -143,9 +145,9 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
         // 登录成功，清除失败计数
         redisTemplate.delete(RedisKeyConst.loginFail(loginKey));
 
-        // 查询角色和权限
-        List<String> roleKeys = baseMapper.selectRoleKeysByUserId(user.getId());
-        List<String> permissions = baseMapper.selectPermissionKeysByUserId(user.getId());
+        // 查询角色和权限（走缓存，减少登录链路的连表查询）
+        List<String> roleKeys = userAuthCacheService.getRoleKeys(user.getId());
+        List<String> permissions = userAuthCacheService.getPermissionKeys(user.getId());
 
         // 签发Token
         Map<String, Object> claims = new HashMap<>();
@@ -154,8 +156,10 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
 
         String accessToken = jwtUtils.generateAccessToken(user.getId(), user.getUsername(), claims);
         String refreshToken = jwtUtils.generateRefreshToken(user.getId());
-        // 记录本次签发的刷新令牌，供后续吊销/轮换校验
-        storeRefreshToken(user.getId(), refreshToken);
+        // 记录本次签发的刷新令牌，供后续吊销/轮换校验。
+        // 置于事务提交后执行：若后续更新登录信息失败导致事务回滚，Redis 中不会残留可用令牌。
+        Long userId = user.getId();
+        TransactionUtils.executeAfterCommit(() -> storeRefreshToken(userId, refreshToken));
 
         // 更新登录信息
         user.setLoginIp(IpUtils.getClientIp());
@@ -188,8 +192,8 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
             throw new BusinessException(ErrorCode.USER_NOT_FOUND, "用户不存在");
         }
 
-        List<String> roleKeys = baseMapper.selectRoleKeysByUserId(userId);
-        List<String> permissions = baseMapper.selectPermissionKeysByUserId(userId);
+        List<String> roleKeys = userAuthCacheService.getRoleKeys(userId);
+        List<String> permissions = userAuthCacheService.getPermissionKeys(userId);
 
         UserInfoVO info = UserConverter.toUserInfoVO(user, permissions);
         info.setRole(roleKeys.isEmpty() ? "USER" : roleKeys.get(0));
@@ -275,8 +279,8 @@ public class SysUserServiceImpl extends BaseServiceImpl<SysUserMapper, SysUser>
             throw new BusinessException(ErrorCode.TOKEN_INVALID, "Refresh Token 已失效，请重新登录");
         }
 
-        List<String> roleKeys = baseMapper.selectRoleKeysByUserId(userId);
-        List<String> permissions = baseMapper.selectPermissionKeysByUserId(userId);
+        List<String> roleKeys = userAuthCacheService.getRoleKeys(userId);
+        List<String> permissions = userAuthCacheService.getPermissionKeys(userId);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roleKeys);

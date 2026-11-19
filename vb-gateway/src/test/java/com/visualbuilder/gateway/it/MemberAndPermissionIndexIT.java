@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.visualbuilder.common.core.entity.SysRolePermission;
 import com.visualbuilder.common.it.ItEnv;
 import com.visualbuilder.common.mapper.SysRolePermissionMapper;
+import com.visualbuilder.common.security.UserAuthCacheVersion;
 import com.visualbuilder.project.entity.ProjectMember;
 import com.visualbuilder.project.mapper.ProjectMemberMapper;
 import com.visualbuilder.system.entity.SysPermission;
@@ -46,6 +47,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.mockito.Mockito.mock;
 
 /**
  * 方案 A（P1 / P2）补齐缺失索引的证据链：「回退即失败」的集成测试。
@@ -246,7 +248,8 @@ class MemberAndPermissionIndexIT {
     @Test
     @DisplayName("P2：按 permission_id 清理角色权限关联不再全表扫描（Handler_read_rnd_next 远小于行数）")
     void rolePermissionDeleteDoesNotFullScan() throws Exception {
-        AdminPermissionServiceImpl service = new AdminPermissionServiceImpl(rolePermissionMapper);
+        AdminPermissionServiceImpl service = new AdminPermissionServiceImpl(
+                rolePermissionMapper, mock(UserAuthCacheVersion.class));
         ReflectionTestUtils.setField(service, "baseMapper", session.getMapper(SysPermissionMapper.class));
 
         long before = countRows("SELECT COUNT(*) FROM sys_role_permission WHERE permission_id = "

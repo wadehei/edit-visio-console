@@ -46,6 +46,7 @@
         <jjwt.version>0.12.5</jjwt.version>
         <hutool.version>5.8.27</hutool.version>
         <redisson.version>3.27.2</redisson.version>
+        <jsoup.version>1.17.2</jsoup.version>
         <jacoco.version>0.8.11</jacoco.version>
 
         <!-- 覆盖率门禁阈值（漂移门禁：覆盖率不得低于该比例，低于即 verify 失败）
@@ -156,6 +157,13 @@
                 <groupId>cn.hutool</groupId>
                 <artifactId>hutool-all</artifactId>
                 <version>${hutool.version}</version>
+            </dependency>
+
+            <!-- Jsoup：发布渲染时的 HTML 白名单过滤，替代易被绕过的正则过滤 -->
+            <dependency>
+                <groupId>org.jsoup</groupId>
+                <artifactId>jsoup</artifactId>
+                <version>${jsoup.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -4,6 +4,7 @@ import com.visualbuilder.common.core.entity.SysRolePermission;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.mapper.SysRolePermissionMapper;
+import com.visualbuilder.common.security.UserAuthCacheVersion;
 import com.visualbuilder.user.entity.SysRole;
 import com.visualbuilder.user.mapper.SysRoleMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,11 +36,14 @@ class AdminRoleServiceImplTest {
     @Mock
     private SysRolePermissionMapper rolePermissionMapper;
 
+    @Mock
+    private UserAuthCacheVersion userAuthCacheVersion;
+
     private AdminRoleServiceImpl roleService;
 
     @BeforeEach
     void setUp() {
-        roleService = new AdminRoleServiceImpl(rolePermissionMapper);
+        roleService = new AdminRoleServiceImpl(rolePermissionMapper, userAuthCacheVersion);
         ReflectionTestUtils.setField(roleService, "baseMapper", roleMapper);
     }
 
@@ -75,6 +79,7 @@ class AdminRoleServiceImplTest {
         assertEquals(3, relations.size());
         assertEquals(5L, relations.get(0).getRoleId());
         assertEquals(3L, relations.get(2).getPermissionId());
+        verify(userAuthCacheVersion).bump();
     }
 
     @Test
@@ -97,6 +102,7 @@ class AdminRoleServiceImplTest {
 
         verify(rolePermissionMapper).delete(any());
         verify(roleMapper).deleteById(5L);
+        verify(userAuthCacheVersion).bump();
     }
 
     @Test

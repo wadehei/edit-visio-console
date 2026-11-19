@@ -7,6 +7,8 @@ import com.visualbuilder.common.core.entity.SysRolePermission;
 import com.visualbuilder.common.core.exception.BusinessException;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.mapper.SysRolePermissionMapper;
+import com.visualbuilder.common.security.UserAuthCacheVersion;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.system.dto.PermissionCreateDTO;
 import com.visualbuilder.system.dto.PermissionUpdateDTO;
 import com.visualbuilder.system.entity.SysPermission;
@@ -29,6 +31,7 @@ public class AdminPermissionServiceImpl extends BaseServiceImpl<SysPermissionMap
         implements AdminPermissionService {
 
     private final SysRolePermissionMapper rolePermissionMapper;
+    private final UserAuthCacheVersion userAuthCacheVersion;
 
     @Override
     public List<SysPermission> getPermissionTree() {
@@ -77,6 +80,8 @@ public class AdminPermissionServiceImpl extends BaseServiceImpl<SysPermissionMap
         if (dto.getApiPath() != null) permission.setApiPath(dto.getApiPath());
         if (dto.getRemark() != null) permission.setRemark(dto.getRemark());
         this.updateById(permission);
+        // 权限状态/定义变更可能影响用户可见权限，事务提交后整体失效缓存
+        TransactionUtils.executeAfterCommit(userAuthCacheVersion::bump);
     }
 
     @Override
@@ -90,6 +95,8 @@ public class AdminPermissionServiceImpl extends BaseServiceImpl<SysPermissionMap
         rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
                 .eq(SysRolePermission::getPermissionId, permissionId));
         this.removeById(permissionId);
+        // 权限删除后，已缓存该权限的用户需整体失效，避免刷新令牌时携带无效权限
+        TransactionUtils.executeAfterCommit(userAuthCacheVersion::bump);
         log.info("删除权限: permissionId={}", permissionId);
     }
 

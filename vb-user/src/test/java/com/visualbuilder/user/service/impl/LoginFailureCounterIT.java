@@ -153,7 +153,8 @@ class LoginFailureCounterIT {
                 mock(JwtUtils.class),
                 mock(SysUserRoleMapper.class),
                 mock(SysRoleMapper.class),
-                redisTemplate);
+                redisTemplate,
+                mock(UserAuthCacheService.class));
         // ServiceImpl 的 baseMapper 是 @Autowired 字段，非 Spring 上下文下需手动注入
         ReflectionTestUtils.setField(service, "baseMapper", userMapper);
     }
@@ -310,11 +311,13 @@ class LoginFailureCounterIT {
         when(userMapper.selectOne(any())).thenReturn(user);
         when(userMapper.selectOne(any(), anyBoolean())).thenReturn(user);
         when(userMapper.selectList(any())).thenReturn(new ArrayList<>(Collections.singletonList(user)));
-        when(userMapper.selectRoleKeysByUserId(any())).thenReturn(new ArrayList<>(Collections.singletonList("USER")));
-        when(userMapper.selectPermissionKeysByUserId(any())).thenReturn(new ArrayList<>());
+
+        UserAuthCacheService authCache = mock(UserAuthCacheService.class);
+        when(authCache.getRoleKeys(any())).thenReturn(new ArrayList<>(Collections.singletonList("USER")));
+        when(authCache.getPermissionKeys(any())).thenReturn(new ArrayList<>());
 
         SysUserServiceImpl successService = new SysUserServiceImpl(
-                encoder, jwt, mock(SysUserRoleMapper.class), mock(SysRoleMapper.class), redisTemplate);
+                encoder, jwt, mock(SysUserRoleMapper.class), mock(SysRoleMapper.class), redisTemplate, authCache);
         ReflectionTestUtils.setField(successService, "baseMapper", userMapper);
 
         LoginDTO dto = new LoginDTO();

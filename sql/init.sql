@@ -99,6 +99,7 @@ CREATE TABLE sys_permission (
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_parent_id (parent_id),
+  KEY idx_permission_status_sort (status, sort_order),
   UNIQUE KEY uk_permission_key (permission_key, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='权限表';
 
@@ -138,7 +139,9 @@ CREATE TABLE sys_dept (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_dept_tenant_parent (tenant_id, parent_id)
+  KEY idx_dept_tenant_parent (tenant_id, parent_id),
+  -- 同一父节点下部门名唯一（deleted 参与唯一键以兼容逻辑删除）
+  UNIQUE KEY uk_dept_parent_name (tenant_id, parent_id, dept_name, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='部门表';
 
 -- --------------------------------------------------------------------------
@@ -230,7 +233,9 @@ CREATE TABLE biz_component_category (
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  -- 同一父级下分类名唯一（deleted 参与唯一键以兼容逻辑删除）
+  UNIQUE KEY uk_component_category_name (parent_id, name, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='组件分类表';
 
 -- 2.5 组件表
@@ -271,7 +276,9 @@ CREATE TABLE biz_template_category (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_template_category_sort (sort_order)
+  KEY idx_template_category_sort (sort_order),
+  -- 分类名唯一（deleted 参与唯一键以兼容逻辑删除）
+  UNIQUE KEY uk_template_category_name (name, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='模板分类表';
 
 -- 2.7 模板表
@@ -392,7 +399,10 @@ CREATE TABLE sys_log (
   cost_time       BIGINT          NOT NULL DEFAULT 0,
   created_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_created_time (created_time)
+  KEY idx_created_time (created_time),
+  -- 按用户 / 按模块查日志时避免全表扫描，且与时间排序复合可用
+  KEY idx_log_user_created (user_id, created_time),
+  KEY idx_log_module_created (module, created_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='操作日志表';
 
 CREATE TABLE sys_login_log (

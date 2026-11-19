@@ -1,6 +1,7 @@
 package com.visualbuilder.system.service.impl;
 
 import com.visualbuilder.common.mapper.SysRolePermissionMapper;
+import com.visualbuilder.common.security.UserAuthCacheVersion;
 import com.visualbuilder.system.entity.SysPermission;
 import com.visualbuilder.system.mapper.SysPermissionMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,11 +31,14 @@ class AdminPermissionServiceImplTest {
     @Mock
     private SysRolePermissionMapper rolePermissionMapper;
 
+    @Mock
+    private UserAuthCacheVersion userAuthCacheVersion;
+
     private AdminPermissionServiceImpl permissionService;
 
     @BeforeEach
     void setUp() {
-        permissionService = new AdminPermissionServiceImpl(rolePermissionMapper);
+        permissionService = new AdminPermissionServiceImpl(rolePermissionMapper, userAuthCacheVersion);
         ReflectionTestUtils.setField(permissionService, "baseMapper", permissionMapper);
     }
 
@@ -85,6 +89,21 @@ class AdminPermissionServiceImplTest {
 
         verify(rolePermissionMapper).delete(any());
         verify(permissionMapper).deleteById(4L);
+        verify(userAuthCacheVersion).bump();
+    }
+
+    @Test
+    @DisplayName("更新权限定义后失效用户角色权限缓存")
+    void updatePermission_evictsUserAuthCache() {
+        when(permissionMapper.selectById(4L)).thenReturn(perm(4L, 0L, "系统管理"));
+        com.visualbuilder.system.dto.PermissionUpdateDTO dto =
+                new com.visualbuilder.system.dto.PermissionUpdateDTO();
+        dto.setStatus(0);
+
+        permissionService.updatePermission(4L, dto);
+
+        verify(permissionMapper).updateById(any(SysPermission.class));
+        verify(userAuthCacheVersion).bump();
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.visualbuilder.common.core.result.R;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -182,6 +183,18 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public R<Void> handleNotFound(NoResourceFoundException e, HttpServletRequest request) {
         R<Void> r = R.notFound("接口不存在: " + request.getRequestURI());
+        r.setPath(request.getRequestURI());
+        return r;
+    }
+
+    /**
+     * 唯一约束冲突（并发重复提交） — 返回 409，避免直接暴露数据库异常
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public R<Void> handleDuplicateKey(DuplicateKeyException e, HttpServletRequest request) {
+        log.warn("唯一约束冲突 [{}]: {}", request.getRequestURI(), e.getMessage());
+        R<Void> r = R.fail(ErrorCode.DATA_ALREADY_EXISTS, "数据已存在，请勿重复提交");
         r.setPath(request.getRequestURI());
         return r;
     }

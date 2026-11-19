@@ -9,7 +9,9 @@ import com.visualbuilder.common.core.entity.SysRolePermission;
 import com.visualbuilder.common.core.exception.ErrorCode;
 import com.visualbuilder.common.core.result.PageResult;
 import com.visualbuilder.common.mapper.SysRolePermissionMapper;
+import com.visualbuilder.common.security.UserAuthCacheVersion;
 import com.visualbuilder.common.util.PageUtils;
+import com.visualbuilder.common.util.TransactionUtils;
 import com.visualbuilder.user.dto.RoleCreateDTO;
 import com.visualbuilder.user.dto.RoleUpdateDTO;
 import com.visualbuilder.user.entity.SysRole;
@@ -31,6 +33,7 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
         implements AdminRoleService {
 
     private final SysRolePermissionMapper rolePermissionMapper;
+    private final UserAuthCacheVersion userAuthCacheVersion;
 
     @Override
     public PageResult<SysRole> listRoles(int page, int pageSize, String keyword) {
@@ -108,6 +111,8 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
                     .collect(Collectors.toList());
             rolePermissionMapper.batchInsert(relations);
         }
+        // 事务提交后再失效用户角色/权限缓存，避免「缓存已清、事务回滚」造成的不一致
+        TransactionUtils.executeAfterCommit(userAuthCacheVersion::bump);
         log.info("分配角色权限: roleId={}, permissionCount={}", roleId,
                 permissionIds != null ? permissionIds.size() : 0);
     }
@@ -123,6 +128,8 @@ public class AdminRoleServiceImpl extends BaseServiceImpl<SysRoleMapper, SysRole
         rolePermissionMapper.delete(new LambdaQueryWrapper<SysRolePermission>()
                 .eq(SysRolePermission::getRoleId, roleId));
         this.removeById(roleId);
+        // 事务提交后再失效用户角色/权限缓存（该角色的用户已不再持有对应权限）
+        TransactionUtils.executeAfterCommit(userAuthCacheVersion::bump);
         log.info("删除角色: roleId={}", roleId);
     }
 }

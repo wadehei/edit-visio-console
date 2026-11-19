@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Service
@@ -39,6 +40,11 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
 
     private static final String CACHE_KEY_ALL = "component:list:all";
     private static final Duration CACHE_TTL = Duration.ofMinutes(30);
+
+    /** 缓存 TTL = 基础值 + 0~10% 随机抖动，避免大量 key 在同一时刻集中过期形成缓存雪崩 */
+    private static Duration jitteredCacheTtl() {
+        return CACHE_TTL.plusSeconds(ThreadLocalRandom.current().nextLong(CACHE_TTL.getSeconds() / 10 + 1));
+    }
 
     /** 列表不需要完整定义，查询时排除三个大字段 */
     private static final Set<String> SCHEMA_COLUMNS =
@@ -73,7 +79,7 @@ public class ComponentServiceImpl extends BaseServiceImpl<ComponentMapper, Compo
         if (categoryId == null && !StringUtils.hasText(keyword)) {
             try {
                 redisTemplate.opsForValue().set(CACHE_KEY_ALL,
-                        objectMapper.writeValueAsString(result), CACHE_TTL);
+                        objectMapper.writeValueAsString(result), jitteredCacheTtl());
             } catch (Exception e) {
                 log.warn("写入组件缓存失败: {}", e.getMessage());
             }

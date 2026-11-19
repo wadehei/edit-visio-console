@@ -33,6 +33,9 @@ public final class RedisKeyConst {
     /** 账号锁定标记，拼接登录标识 */
     public static final String LOGIN_LOCK_PREFIX = "login:lock:";
 
+    /** 用户角色/权限缓存版本号：角色、权限或用户角色关系变更时自增，使既有缓存整体失效 */
+    public static final String USER_AUTH_VERSION_KEY = "user:auth:ver";
+
     public static String loginFail(String loginKey) {
         return LOGIN_FAIL_PREFIX + loginKey;
     }
@@ -55,5 +58,10 @@ public final class RedisKeyConst {
 
     public static String refreshToken(Long userId) {
         return REFRESH_TOKEN_PREFIX + userId;
+    }
+
+    /** 用户角色/权限缓存 Key，带版本号前缀以便整体失效 */
+    public static String userAuth(long version, Long userId) {
+        return "user:auth:" + version + ":" + userId;
     }
 }
