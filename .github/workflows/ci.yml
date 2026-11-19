@@ -60,6 +60,22 @@ jobs:
           -Dit.redis.port=6379
           -Dit.redis.password=
 
+      # 失败时把 surefire/failsafe 报告摘要写成 error 注解(check-runs API 匿名可读,
+      # 便于无凭据诊断 CI 失败原因)
+      - name: 失败时输出测试报告摘要
+        if: failure()
+        run: |
+          {
+            grep -l -E "Failures: [1-9]|Errors: [1-9]" vb-*/target/surefire-reports/*.txt vb-*/target/failsafe-reports/*.txt 2>/dev/null | head -5 | while read -r f; do
+              echo "==== $(basename "$f") ===="
+              grep -E "<<< (FAILURE|ERROR)!" "$f" | head -8
+              grep -E "AssertionError|Exception|Expected|but was|Tests run" "$f" | head -12
+            done
+            grep -rhE "\[ERROR\].*(Tests|verify|BUILD)" vb-*/target/*.log 2>/dev/null | head -5
+          } | sed 's/\r$//' | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::$line"
+          done
+
       - name: Upload JaCoCo report
         if: always()
         uses: actions/upload-artifact@v4
