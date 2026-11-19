@@ -102,9 +102,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       <b>不证明</b>删除后写入吞吐提升的具体数值。</li>
  *   <li>{@code Handler_read_rnd_next} 为 0 只代表该次查询未做全表顺序扫描，
  *       <b>不证明</b>该查询永不回退为全表扫描（数据分布极端时仍可能）。</li>
- *   <li>本测试<b>不覆盖</b> {@code biz_project.idx_user_id} 与
- *       {@code biz_publish_record.idx_publish_project_id} 两处同类冗余——它们已被发现但未经确认，
- *       见 {@link #noUnregisteredRedundantIndex()} 中的登记表。</li>
+ *   <li>同类冗余（biz_project/biz_publish_record/sys_dept 三表四处）已于 2026-11-20
+ *       全部治理完毕，登记表已清空——见 {@link #noUnregisteredRedundantIndex()}。</li>
  * </ul>
  *
  * <h3>变异实验结果（2026-11-05 本机实测，MySQL 8.4.9 @127.0.0.1:3307）</h3>
@@ -237,17 +236,16 @@ class IndexGovernanceIT {
     @Test
     @DisplayName("A4：全库不出现「未登记」的最左前缀冗余索引")
     void noUnregisteredRedundantIndex() throws Exception {
-        // 已发现但尚未获授权处理的同类冗余（保持登记，不得新增）：
-        //   biz_project.idx_user_id            ⊂ idx_project_user_deleted(user_id, deleted)
-        //   biz_publish_record.idx_publish_project_id ⊂ idx_publish_project_published(project_id, published_at)
-        Set<String> known = Set.of(
-                "biz_project.idx_user_id<=idx_project_user_deleted",
-                "biz_publish_record.idx_publish_project_id<=idx_publish_project_published");
+        // 冗余索引已全部治理(2026-11-20):biz_project.idx_user_id/idx_project_user_deleted
+        // 由 idx_project_user_deleted_updated 左前缀覆盖、biz_publish_record.idx_publish_project_id
+        // 由 idx_publish_project_published 覆盖、sys_dept.idx_dept_tenant_parent 由
+        // uk_dept_parent_name 左前缀覆盖,均已从 init.sql 移除;此后不得新增任何冗余。
+        Set<String> known = Set.of();
 
         Set<String> found = findLeftmostPrefixRedundancies();
         System.out.println("[A4] 全库最左前缀冗余索引=" + found);
         assertThat(found)
-                .as("除已登记的 2 处外不得新增最左前缀冗余索引；新增说明索引治理被回退")
+                .as("全库不得存在任何最左前缀冗余索引；出现即说明索引治理被回退")
                 .isEqualTo(known);
     }
 

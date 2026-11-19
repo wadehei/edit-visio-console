@@ -139,8 +139,8 @@ CREATE TABLE sys_dept (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_dept_tenant_parent (tenant_id, parent_id),
-  -- 同一父节点下部门名唯一（deleted 参与唯一键以兼容逻辑删除）
+  -- 同一父节点下部门名唯一（deleted 参与唯一键以兼容逻辑删除）；
+  -- 该键左前缀 (tenant_id, parent_id) 同时覆盖按租户查子部门,不再单设索引
   UNIQUE KEY uk_dept_parent_name (tenant_id, parent_id, dept_name, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='部门表';
 
@@ -174,11 +174,10 @@ CREATE TABLE biz_project (
   updated_time    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted         TINYINT         NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  KEY idx_user_id (user_id),
   KEY idx_project_status (status),
   KEY idx_project_created_time (created_time),
-  KEY idx_project_user_deleted (user_id, deleted),
-  -- 覆盖「按用户过滤 + updated_time 排序」的项目列表查询
+  -- 覆盖「按用户过滤(+deleted)+ updated_time 排序」的项目列表查询;
+  -- 其左前缀 (user_id, deleted) 同时服务仅按用户过滤的场景,不再单设 idx_user_id
   KEY idx_project_user_deleted_updated (user_id, deleted, updated_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='项目表';
 
@@ -335,7 +334,7 @@ CREATE TABLE biz_publish_record (
   PRIMARY KEY (id),
   -- 同一页面的版本号唯一：既做并发发布的防重兜底，又服务「取最新版本」的 ORDER BY version_no DESC LIMIT 1
   UNIQUE KEY uk_publish_page_version (page_id, version_no),
-  KEY idx_publish_project_id (project_id),
+  -- 左前缀 (project_id) 服务按项目查发布记录,不再单设 idx_publish_project_id
   KEY idx_publish_project_published (project_id, published_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='发布记录表';
 
